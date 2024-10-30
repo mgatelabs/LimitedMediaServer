@@ -184,3 +184,8 @@ This is what I built
 3. External drive compatible with RP5 with 7+ TB storage
 4. RP5 is wired into the network
 5. RP5 configured for SSH access with no desktop
+
+## Known Issues and Fixes
+
+1. iOS Won't Play Audio / Video
+   1. It seems like the new privacy settings are blocking the app from sending cookies.  Turn off "Prevent Cross-Site Tracking" in Safari settings and it will work.
