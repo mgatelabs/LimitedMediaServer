@@ -92,6 +92,11 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
 
         image_list = processor.list_images(book, chapter)
 
+        if image_list is None:
+            task_wrapper.set_failure()
+            task_wrapper.error('Did not get images from processor')
+            return False
+
         if task_wrapper.can_debug():
             task_wrapper.debug(f'Number of Images: {len(image_list)}')
 
@@ -117,7 +122,7 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
                     current_image = current_image + 1
                     task_wrapper.update_percent(100.0 * (current_image / len(image_list)))
                     modified = True
-                    random_sleep()
+                    random_sleep(3)
                 else:
                     task_wrapper.critical('Invalid Secure download, stopping')
                     break
@@ -129,7 +134,7 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
                     current_image = current_image + 1
                     task_wrapper.update_percent(100.0 * (current_image / len(image_list)))
                     modified = True
-                    random_sleep()
+                    random_sleep(3)
                 else:
                     task_wrapper.critical('Invalid Insecure download, stopping')
                     break

@@ -1,4 +1,6 @@
 import argparse
+import random
+from itertools import cycle
 
 from flask_sqlalchemy.session import Session
 
@@ -10,6 +12,43 @@ from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
+
+
+# Example function to group books by processor
+def group_books_by_processor(books):
+    # Group books by processor value
+    grouped_books = {}
+    for book in books:
+        if book.processor not in grouped_books:
+            grouped_books[book.processor] = []
+        grouped_books[book.processor].append(book)
+
+    return grouped_books
+
+
+# Function to interleave grouped books in desired order
+def interleave_books(grouped_books):
+    # Create a list of unique processors
+    processors = list(grouped_books.keys())
+    # Cycle through processors
+    processor_cycle = cycle(processors)
+
+    # Interleave books
+    result = []
+    while any(grouped_books.values()):  # Continue while there are books left in any group
+        for processor in processor_cycle:
+            if grouped_books[processor]:  # If there are still books in this group
+                # Choose a random book from the group and add it to the result list
+                book = random.choice(grouped_books[processor])
+                result.append(book)
+                # Remove the chosen book from the group to avoid repeats
+                grouped_books[processor].remove(book)
+
+            # If all books have been used, stop cycling
+            if not any(grouped_books.values()):
+                break
+
+    return result
 
 
 class UpdateAllBooksTask(ActionPlugin):
@@ -91,15 +130,17 @@ class UpdateAllBooksTask(ActionPlugin):
 
     def create_task(self, db_session: Session, args):
 
-
         results = []
         cleaning = (args['cleaning'] == 'a')
 
-        books = db_session.query(Book).all()
+        books = db_session.query(Book).filter(Book.active == True).all()
 
-        for book in books:
-            if book.active:
-                results.append(DownloadBookTask("GetBook", book.name, book.id, self.processors, self.book_folder, '*', cleaning))
+        grouped_books = group_books_by_processor(books)
+        interleaved_books = interleave_books(grouped_books)
+
+        for book in interleaved_books:
+            results.append(
+                DownloadBookTask("GetBook", book.name, book.id, self.processors, self.book_folder, '*', cleaning))
 
         return results
 
@@ -180,13 +221,15 @@ class UpdateSingleBookTask(ActionBookPlugin):
         if is_not_blank(book_id):
             book = find_book_by_id(book_id, db_session)
             if book is not None:
-                return DownloadBookTask("GetBook", book.name, book.id, self.processors, self.book_folder, '*', cleaning == 'a')
+                return DownloadBookTask("GetBook", book.name, book.id, self.processors, self.book_folder, '*',
+                                        cleaning == 'a')
 
         return results
 
 
 class DownloadBookTask(TaskWrapper):
-    def __init__(self, name, description, book_id, processors, book_folder: str, processor_filter: str = "*", clean_all: bool = False):
+    def __init__(self, name, description, book_id, processors, book_folder: str, processor_filter: str = "*",
+                 clean_all: bool = False):
         super().__init__(name, description)
         self.book_id = book_id
         self.processors = processors

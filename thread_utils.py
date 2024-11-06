@@ -1,9 +1,10 @@
+import inspect
 import sys
 import threading
 import traceback
 from abc import ABC, abstractmethod
-import datetime
-import inspect
+from datetime import datetime, timezone
+
 
 def get_caller_info():
     """
@@ -18,10 +19,12 @@ def get_caller_info():
     line_number = caller_frame.f_lineno
     return filename, line_number
 
+
 class TaskManager:
     """
     Manages a list of tasks with thread-safe operations.
     """
+
     def __init__(self):
         self.task_list = []
         self.lock = threading.Lock()
@@ -81,6 +84,7 @@ class TaskManager:
                     return True
             return False
 
+
 class TaskWrapper(ABC):
     """
     Abstract base class for task wrappers, providing logging and task management functionalities.
@@ -113,6 +117,56 @@ class TaskWrapper(ABC):
         self.log_entries = []
         self.token = Token()
         self.logging_level = self.INFO
+        self.init_time = datetime.now(timezone.utc)
+        self.start_time = None
+        self.end_time = None
+
+    def mark_start(self):
+        self.start_time = datetime.now(timezone.utc)
+
+    def mark_end(self):
+        self.end_time = datetime.now(timezone.utc)
+
+    @property
+    def init_timestamp(self):
+        if self.init_time is not None:
+            return self.init_time.strftime("%Y-%m-%d %H:%M:%S")
+        return ""
+
+    @property
+    def start_timestamp(self):
+        if self.start_time is not None:
+            return self.start_time.strftime("%Y-%m-%d %H:%M:%S")
+        return ""
+
+    @property
+    def end_timestamp(self):
+        if self.end_time is not None:
+            return self.end_time.strftime("%Y-%m-%d %H:%M:%S")
+        return ""
+
+    @property
+    def duration_delayed(self):
+        # If start_time is None, calculate duration to the current time
+        current_time = self.start_time or datetime.now(timezone.utc)
+        diff = current_time - self.init_time
+        return int(diff.total_seconds())
+
+    @property
+    def duration_running(self):
+        # If start_time is None, return -1; otherwise calculate to end_time or current time
+        if not self.start_time:
+            return -1
+        current_time = self.end_time or datetime.now(timezone.utc)
+        diff = current_time - self.start_time
+        return int(diff.total_seconds())
+
+    @property
+    def duration_total(self):
+        # Calculate duration from init_time to end_time or current time
+        current_time = self.end_time or datetime.now(timezone.utc)
+        diff = current_time - self.init_time
+        return int(diff.total_seconds())
 
     def update_logging_level(self, logging_level: int):
         """
@@ -301,7 +355,7 @@ class TaskWrapper(ABC):
             log_message (str): The log message.
         """
         if severity >= self.logging_level or severity == self.ALWAYS:
-            current_datetime = datetime.datetime.now()
+            current_datetime = datetime.now()
             human_readable_timestamp = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
             self.log_entries.append({"s": severity, "time": human_readable_timestamp, "text": log_message})
 
@@ -331,10 +385,12 @@ class TaskWrapper(ABC):
         """
         pass
 
+
 class NoOpTaskWrapper(TaskWrapper):
     """
     A no-operation task wrapper for testing and default purposes.
     """
+
     def __init__(self):
         super().__init__('No Op', 'No Op')
 
@@ -354,10 +410,12 @@ class NoOpTaskWrapper(TaskWrapper):
         """
         pass
 
+
 class Token:
     """
     A token to signal task cancellation.
     """
+
     def __init__(self):
         self.should_stop = False
 
@@ -366,6 +424,7 @@ class Token:
         Set the stop signal.
         """
         self.should_stop = True
+
 
 def get_exception():
     """

@@ -1,4 +1,4 @@
-import json
+import logging
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -6,18 +6,19 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, send_from_directory, current_app, request, make_response, abort
 from werkzeug.utils import secure_filename
 
-from auth_utils import shall_authenticate_user, feature_required, feature_required_with_cookie
+from auth_utils import shall_authenticate_user, feature_required, feature_required_with_cookie, get_uid
 from common_utils import generate_success_response, generate_failure_response
 from constants import PROPERTY_SERVER_VOLUME_FOLDER, PROPERTY_SERVER_VOLUME_READY
-from date_utils import convert_date_to_yyyymmdd
+from date_utils import convert_date_to_yyyymmdd, convert_datetime_to_yyyymmdd
 from db import db, Book
 from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_BOOK
 from number_utils import is_integer
 from text_utils import is_blank, clean_string, is_valid_book_id, is_not_blank
+from user_queries import get_user_by_id
 from volume_queries import list_books_for_rating, find_chapters_by_book, find_book_by_id, find_chapter_by_id, \
     find_chapter_by_sequence, upsert_book, upsert_recent, \
-    find_recent_entry, find_viewed_entries, find_bookmarks, add_volume_bookmark, remove_volume_bookmark, \
-    count_books_for_rating
+    find_bookmarks, add_volume_bookmark, remove_volume_bookmark, \
+    count_books_for_rating, find_recent_entries
 from volume_utils import get_volume_max_rating
 
 volume_blueprint = Blueprint('volume', __name__)
@@ -46,6 +47,7 @@ def get_books(user_details: dict) -> tuple:
     requested_rating_limit = clean_string(request.form.get('rating'))
     sort = clean_string(request.form.get('sort'))
     filter_text = clean_string(request.form.get('filter_text'))
+    user_uid = get_uid(user_details)
 
     if is_not_blank(offset) and is_integer(offset):
         offset = int(offset)
@@ -94,14 +96,28 @@ def get_books(user_details: dict) -> tuple:
     if offset > total_books:
         offset = 0
 
-    books = list_books_for_rating(max_rating, filter_text, book_sort, sort_descending, offset, limit)
+    books_with_progress = list_books_for_rating(user_uid, max_rating, filter_text, book_sort, sort_descending, offset,
+                                                limit,
+                                                db.session)
 
-    for book in books:
+    for book, progress in books_with_progress:
+
+        latest = None
+
+        if progress is not None:
+
+            if progress.page_number is not None:
+                value = str(progress.page_number)
+            else:
+                value = f'@{progress.page_percent:.5f}'
+
+            latest = {"chapter": progress.chapter_id, "value": value}
+
         result = {'id': book.id, 'json': book.id, 'name': book.name, 'rating': book.rating, 'cover': book.cover,
                   'first': book.first_chapter, 'last': book.last_chapter, 'active': book.active,
                   'date': convert_date_to_yyyymmdd(book.last_date),
                   'tags': book.tags.split(',') if book.tags is not None else [],
-                  'style': 'page' if book.style == 'P' else 'scroll'}
+                  'style': 'page' if book.style == 'P' else 'scroll', "recent": latest}
 
         book_data.append(result)
 
@@ -124,6 +140,7 @@ def get_chapters(user_details: dict) -> tuple:
     if not current_app.config[PROPERTY_SERVER_VOLUME_READY]:
         return generate_failure_response('Volume service not ready', 400)
 
+    user_uid = get_uid(user_details)
     book_id = clean_string(request.form.get('book_id'))
 
     if is_blank(book_id):
@@ -139,13 +156,27 @@ def get_chapters(user_details: dict) -> tuple:
     if book.rating > max_rating:
         return generate_failure_response('User is not allowed to view content out of their rating zone')
 
-    chapters = find_chapters_by_book(book_id)
+    chapters = find_chapters_by_book(book_id, user_uid)
 
-    chapter_names = [chapter.chapter_id for chapter in chapters]
+    chapter_results = []
+
+    for chapter, progress in chapters:
+
+        if progress is not None:
+            if progress.page_percent is not None:
+                value = f'@{progress.page_percent:.5f}'
+            else:
+                value = str(progress.page_number)
+        else:
+            value = ''
+
+        entry = {"name": chapter.chapter_id, "value": value}
+
+        chapter_results.append(entry)
 
     style = 'scroll' if book.style == 'S' else 'page'
 
-    return generate_success_response('', {'chapters': chapter_names, 'style': style})
+    return generate_success_response('', {'chapters': chapter_results, 'style': style})
 
 
 @volume_blueprint.route('/list/images', methods=['POST'])
@@ -197,6 +228,85 @@ def get_images(user_details: dict) -> tuple:
 
     return generate_success_response('', {"prev": prev_chapter_id, "next": next_chapter_id, "files": files})
 
+
+@volume_blueprint.route('/progress', methods=['POST'])
+@feature_required(volume_blueprint, VIEW_BOOKS)
+def push_progress(user_details):
+    if not current_app.config[PROPERTY_SERVER_VOLUME_READY]:
+        return generate_failure_response('Volume service not ready', 400)
+
+    book_id = clean_string(request.form.get('book_id'))
+    chapter_id = clean_string(request.form.get('chapter_id'))
+    value = clean_string(request.form.get('value'))
+    user_id = get_uid(user_details)
+
+    if is_blank(book_id):
+        return generate_failure_response('book_id parameter is required')
+
+    if is_blank(chapter_id):
+        return generate_failure_response('chapter_id parameter is required')
+
+    if is_blank(value):
+        return generate_failure_response('value parameter is required')
+
+    book = find_book_by_id(book_id)
+
+    if book is None:
+        return generate_failure_response('book not found', 404)
+
+    max_rating = get_volume_max_rating(user_details)
+
+    if book.rating > max_rating:
+        return generate_failure_response('User is not allowed to view content out of their rating zone')
+
+    client_page = None
+    client_progress = None
+
+    if book.style == 'S':
+        if value.startswith('@'):
+            client_progress = float(value[1:])  # Extract substring and convert to float
+        else:
+            client_progress = int(value)  # Convert to integer
+    else:
+        if value.startswith('@'):
+            client_page = 0
+        else:
+            client_page = int(value)
+
+    upsert_recent(user_id, book_id, chapter_id, client_page, client_progress,
+                  datetime.now(timezone.utc), db.session)
+
+    return generate_success_response('')
+
+# Recent History
+
+@volume_blueprint.route('/list/history', methods=['POST'])
+@feature_required(volume_blueprint, VIEW_BOOKS)
+def list_history(user_details):
+    user_uid = get_uid(user_details)
+    max_rating = get_volume_max_rating(user_details)
+
+    rows = find_recent_entries(user_uid, max_rating)
+
+    results = []
+
+    for row in rows:
+
+        if row.page_number is not None:
+            mode = 'page'
+            value = str(row.page_number)
+        elif row.page_percent is not None:
+            mode = 'scroll'
+            value = f'{row.page_percent:.5f}'
+        else:
+            continue
+
+        the_time = convert_datetime_to_yyyymmdd(row.timestamp)
+
+        results.append(
+            {"book": row.book_id, "chapter": row.chapter_id, "mode": mode, "page": value, "timestamp": the_time})
+
+    return generate_success_response('', {"history": results})
 
 # Image Serving
 
@@ -263,7 +373,8 @@ def serve_preview_image(user_details, book_folder: str, chapter_name: str) -> 'R
     book_folder = secure_filename(book_folder)
     chapter_name = secure_filename(chapter_name)
 
-    file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_folder, '.previews', chapter_name + '.png')
+    file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_folder, '.previews',
+                             chapter_name + '.png')
 
     if os.path.exists(file_path) and os.path.isfile(file_path):
         response = make_response(send_from_directory(os.path.dirname(file_path), os.path.basename(file_path)))
@@ -274,126 +385,6 @@ def serve_preview_image(user_details, book_folder: str, chapter_name: str) -> 'R
     else:
         logging.warning('File not found: ' + file_path)
         abort(404)
-
-
-@volume_blueprint.route('/viewed', methods=['POST'])
-@feature_required(volume_blueprint, VIEW_BOOKS)
-def view_sync(user_details: dict) -> tuple:
-    """
-    Synchronize the viewed and history data for a user.
-
-    Args:
-    user_details (dict): Details of the authenticated user.
-
-    Returns:
-    tuple: JSON response with the synchronized data and HTTP status code.
-    """
-
-    if not current_app.config[PROPERTY_SERVER_VOLUME_READY]:
-        return generate_failure_response('Volume service not ready', 400)
-
-    current_user_id = user_details['uid']
-
-    viewed_json_string = request.form.get('viewed')
-    history_json_string = request.form.get('history')
-
-    client_viewed_data = None
-    client_history_data = None
-    if viewed_json_string:
-        try:
-            client_viewed_data = json.loads(viewed_json_string)
-            client_history_data = json.loads(history_json_string)
-        except ValueError as e:
-            return generate_failure_response('Invalid JSON format')
-
-    in_history = {}
-
-    # History merges
-    for client_data in client_history_data:
-        book_id = clean_string(client_data['book'])
-        client_chapter = clean_string(client_data['chapter'])
-        client_value = clean_string(client_data['page'])
-        client_timestamp = client_data['timestamp'] / 1000
-        client_page = None
-        client_progress = None
-
-        if is_blank(client_chapter) or is_blank(book_id):
-            continue
-
-        in_history[book_id] = True
-
-        if client_value.startswith('@'):
-            client_progress = float(client_value[1:])  # Extract substring and convert to float
-        else:
-            client_page = int(client_value)  # Convert to integer
-
-        server_timestamp = 0
-
-        recent_entry = find_recent_entry(current_user_id, book_id)
-        if recent_entry is not None:
-            # Assuming 'row' is the result from your database query
-            if recent_entry.timestamp:
-                server_timestamp = int(recent_entry.timestamp.timestamp())
-
-        # update it new
-        if client_timestamp > server_timestamp:
-            upsert_recent(current_user_id, book_id, client_chapter, client_page, client_progress,
-                          datetime.fromtimestamp(client_timestamp), db.session)
-
-    # See if something fell through
-    for client_key in client_viewed_data:
-        if client_key not in in_history:
-            in_history[client_key] = True
-            value = client_viewed_data[client_key]
-            recent_entry = find_recent_entry(current_user_id, client_key)
-            if recent_entry is None:
-                book = find_book_by_id(client_key, db.session)
-                client_page = None
-                client_progress = None
-                parts = value.split('^')
-                if len(parts) < 2:
-                    continue
-                chapter = parts[0]
-                page_progress = parts[1]
-
-                if book.style == 'S':
-                    if page_progress.startswith('@'):
-                        client_progress = float(page_progress[1:])  # Extract substring and convert to float
-                    else:
-                        client_progress = int(page_progress)  # Convert to integer
-                else:
-                    if page_progress.startswith('@'):
-                        continue
-                    client_page = int(page_progress)
-
-                upsert_recent(current_user_id, book.id, chapter, client_page, client_progress,
-                              datetime.now(timezone.utc), db.session)
-
-    recent_rows = find_viewed_entries(current_user_id)
-
-    dest_viewed = {}
-    dest_history = []
-    count = 0
-
-    if recent_rows:
-        for recent in recent_rows:
-
-            if recent.page_percent is not None:
-                mode = 'scroll'
-                value = f'@{recent.page_percent:.5f}'
-            else:
-                mode = 'page'
-                value = str(recent.page_number)
-
-            if count < 25:
-                dest_history.append({"book": recent.book_id, "chapter": recent.chapter_id, "page": value, "mode": mode,
-                                     "timestamp": int(recent.timestamp.timestamp()) * 1000})
-
-            count = count + 1
-
-            dest_viewed[recent.book_id] = f'{recent.chapter_id}^{value}'
-
-    return generate_success_response('', {"viewed": dest_viewed, "history": dest_history[:25]})
 
 
 @volume_blueprint.route('/list/processors', methods=['POST'])
@@ -667,8 +658,8 @@ def update_book(user_details: dict) -> tuple:
     # Update the existing book in the database
     try:
         upsert_book(updated_book['id'], updated_book['name'], updated_book['processor'], updated_book['active'],
-                    updated_book['info_url'], updated_book['start_chapter'], updated_book['rss_url'],
-                    updated_book['extra_url'], updated_book['skip'], updated_book['rating'], updated_book['tags'],
+                    updated_book['info_url'], updated_book['rss_url'], updated_book['extra_url'],
+                    updated_book['start_chapter'], updated_book['skip'], updated_book['rating'], updated_book['tags'],
                     updated_book['style'], db_session=db.session)
 
     except Exception as e:

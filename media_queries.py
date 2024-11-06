@@ -3,13 +3,16 @@ from typing import Optional, List
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import joinedload
+from sqlalchemy import and_
 
-from db import MediaFolder, MediaFile, db
+from db import MediaFolder, MediaFile, db, MediaFileProgress
 from text_utils import is_not_blank
 
 
 # Insert or Update Folder
-def insert_folder(parent_id: str, name: str, rating: int, info_url: str, tags: str, active: bool, group_id: Optional[int],
+def insert_folder(parent_id: str, name: str, rating: int, info_url: str, tags: str, active: bool,
+                  group_id: Optional[int],
                   db_session: Session = db.session):
     """
     Insert a new folder or update an existing one.
@@ -45,7 +48,8 @@ def insert_folder(parent_id: str, name: str, rating: int, info_url: str, tags: s
 
 
 # Update Folder
-def update_folder(folder_id: str, name: str, rating: int, info_url: str, tags: str, active: bool, group_id: Optional[int],
+def update_folder(folder_id: str, name: str, rating: int, info_url: str, tags: str, active: bool,
+                  group_id: Optional[int],
                   db_session: Session = db.session) -> bool:
     """
     Update an existing folder.
@@ -187,14 +191,16 @@ def _build_root_folders_query(filter_text: str = None, max_limit: int = 0, db_se
 
     return query_builder
 
+
 def find_all_folders(db_session: Session = db.session):
     return db_session.query(MediaFolder).all()
+
 
 # Find Root Folders
 def find_root_folders(filter_text: str = None, max_limit: int = 0, query_offset: int = 0, query_limit: int = 0,
                       sort_column=MediaFolder.name, sort_descending: bool = False, db_session: Session = None) -> \
-Optional[
-    List[type[MediaFolder]]]:
+        Optional[
+            List[type[MediaFolder]]]:
     """
     Find all root folders (folders without a parent).
 
@@ -341,8 +347,8 @@ def _build_files_in_folders_query(folder_id: str, filter_text: str = None, db_se
 
 # Find Files in Folder
 def find_files_in_folder(folder_id: str, filter_text: str = None, query_offset: int = 0, query_limit: int = 0,
-                         sort_column=MediaFile.filename, sort_descending: bool = False, db_session: Session = None) -> Optional[
-    List[type[MediaFile]]]:
+                         sort_column=MediaFile.filename, sort_descending: bool = False, db_session: Session = None,
+                         uid: Optional[int] = None) -> Optional[List[type[MediaFile]]]:
     """
     Find all files in a specific folder.
 
@@ -354,12 +360,16 @@ def find_files_in_folder(folder_id: str, filter_text: str = None, query_offset: 
         sort_column:
         sort_descending:
         db_session (Session, optional): The database session to use. Defaults to None.
+        :param uid:
 
     Returns:
         Optional[List[MediaFile]]: A list of MediaFile objects in the folder or None if not found.
     """
 
     query = _build_files_in_folders_query(folder_id, filter_text, db_session)
+
+    if uid is not None:
+        query = query.outerjoin(MediaFileProgress, and_(MediaFile.id == MediaFileProgress.file_id, MediaFileProgress.user_id == uid)).options(joinedload(MediaFile.progress_records))
 
     if sort_descending:
         query = query.order_by(sort_column.desc(), MediaFile.id.desc())
@@ -475,3 +485,74 @@ def find_missing_file_previews(db_session: Session = None) -> Optional[List[type
                                                                              MediaFile.filename).all()
     else:
         return MediaFile.query.filter_by(preview=False).order_by(MediaFile.folder_id, MediaFile.filename).all()
+
+
+# Progress
+
+def find_progress_entry(user_id: int, file_id: str) -> Optional[MediaFileProgress]:
+    """
+    Try to find an entry for a media file
+    :param user_id:
+    :param file_id:
+    :return:
+    """
+    return MediaFileProgress.query.filter_by(user_id=user_id, file_id=file_id).first()# Progress
+
+
+def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Session = db.session) -> Optional[list[type[MediaFileProgress]]]:
+    """
+    Try to find an entry for a media file
+    :param user_id:
+    :param db_sesson:
+    :return:
+    """
+
+    query = (
+        db_session.query(MediaFileProgress)
+        .join(MediaFile, MediaFileProgress.file_id == MediaFile.id)
+        .join(MediaFolder, MediaFile.folder_id == MediaFolder.id)
+        .filter(
+            MediaFileProgress.user_id == user_id,
+            MediaFolder.rating < 200,  # Exclude records where rating is >= 200
+            MediaFolder.rating <= max_rating,  # Exclude records they can't see
+        )
+        .order_by(MediaFileProgress.timestamp.desc(), MediaFileProgress.file_id)
+        .limit(35)  # Limit to 50 records
+    )
+
+    return query.all()
+
+
+# Function to insert or update a book record
+def upsert_progress(user_id: int, file_id: str, progress: float, timestamp: datetime, db_session: Session = db.session):
+    """
+    This will add/update a recent entry, so we can track how far a user has progressed
+    :param user_id:
+    :param file_id:
+    :param progress:
+    :param timestamp:
+    :param db_session:
+    :return:
+    """
+    try:
+        # Try to get the book with the specified ID
+        existing_progress = db_session.query(MediaFileProgress).filter_by(user_id=user_id, file_id=file_id).one()
+
+        existing_progress.progress = progress
+        existing_progress.timestamp = timestamp
+
+        # Commit the updates
+        db_session.commit()
+
+    except NoResultFound:
+        # If no book is found, create a new record
+        new_progress = MediaFileProgress(
+            user_id=user_id,
+            file_id=file_id,
+            progress=progress,
+            timestamp=timestamp
+        )
+
+        # Add and commit the new book
+        db_session.add(new_progress)
+        db_session.commit()

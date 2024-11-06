@@ -2,8 +2,9 @@ from datetime import date, datetime
 from typing import Optional, List
 
 from flask_sqlalchemy.session import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 from sqlalchemy.exc import NoResultFound
+from sqlalchemy.orm import aliased
 
 from date_utils import convert_yyyymmdd_to_date
 from db import Book, Chapter, VolumeProgress, VolumeBookmark, db
@@ -27,32 +28,40 @@ def find_book_by_id(book_id: str, db_session: Session = None) -> Optional[Book]:
 
 # Recent / Viewed
 
-def find_recent_entry(user_id: int, book_id: str) -> Optional[VolumeProgress]:
+def find_recent_entries(user_id: int, max_rating: int) -> Optional[List[VolumeProgress]]:
     """
-    Try to find an entry for a book
-    :param user_id:
-    :param book_id:
-    :return:
+    Find the user's recent activities, grouped by book_id with the latest timestamp,
+    and filtered by the book's rating.
+    :param user_id: The user's ID.
+    :param max_rating: The maximum rating allowed for the books.
+    :return: List of recent VolumeProgress entries.
     """
-    return VolumeProgress.query.filter_by(user_id=user_id, book_id=book_id).first()
+    # Subquery to get the latest timestamp per book_id
+    latest_entries_subquery = (
+        db.session.query(
+            VolumeProgress.book_id,
+            func.max(VolumeProgress.timestamp).label("latest_timestamp")
+        )
+        .filter(VolumeProgress.user_id == user_id)
+        .group_by(VolumeProgress.book_id)
+        .subquery()
+    )
 
+    # Alias for the book model to apply rating filter
+    BookAlias = aliased(Book)
 
-def find_recent_entries(user_id: int) -> Optional[List[VolumeProgress]]:
-    """
-    Find the user's recent activities
-    :param user_id:
-    :return:
-    """
-    return VolumeProgress.query.filter_by(user_id=user_id).order_by(desc(VolumeProgress.timestamp)).limit(25).all()
-
-
-def find_viewed_entries(user_id: int) -> Optional[List[VolumeProgress]]:
-    """
-    Find the entries in the system, where the user has look at something
-    :param user_id:
-    :return:
-    """
-    return VolumeProgress.query.filter_by(user_id=user_id).order_by(desc(VolumeProgress.timestamp)).all()
+    # Main query: Join with the subquery and filter by max_rating
+    return (
+        db.session.query(VolumeProgress)
+        .join(latest_entries_subquery,
+              (VolumeProgress.book_id == latest_entries_subquery.c.book_id) &
+              (VolumeProgress.timestamp == latest_entries_subquery.c.latest_timestamp))
+        .join(BookAlias, VolumeProgress.book_id == BookAlias.id)
+        .filter(BookAlias.rating <= max_rating)
+        .order_by(desc(VolumeProgress.timestamp))
+        .limit(35)
+        .all()
+    )
 
 
 # Bookmarks
@@ -114,13 +123,31 @@ def remove_volume_bookmark(session: Session, user_id: int, row_id: int) -> bool:
     return False
 
 
-def find_chapters_by_book(book_id: str) -> Optional[List[Chapter]]:
+def find_chapters_by_book(book_id: str, uid: int) -> Optional[List[tuple[Chapter, VolumeProgress]]]:
     """
     Function to find all chapters of a book by the book's ID
-    :param book_id:
+    :param book_id: Book ID
+    :param uid: User ID
     :return:
     """
-    return Chapter.query.filter_by(book_id=book_id).order_by(Chapter.sequence).all()
+
+    return (
+        db.session.query(
+            Chapter,
+            VolumeProgress
+        )
+        .filter(Chapter.book_id == book_id)
+        .outerjoin(
+            VolumeProgress,
+            (VolumeProgress.book_id == Chapter.book_id) &
+            (VolumeProgress.chapter_id == Chapter.chapter_id) &
+            (VolumeProgress.user_id == uid)
+        )
+        .order_by(Chapter.sequence)
+        .all()
+    )
+    #
+    # return Chapter.query.filter_by(book_id=book_id).order_by(Chapter.sequence).all()
 
 
 def find_chapter_by_id(book_id: str, chapter_id: str) -> Optional[Chapter]:
@@ -144,14 +171,77 @@ def find_chapter_by_sequence(book_id: str, sequence: int) -> Optional[Chapter]:
     return Chapter.query.filter_by(book_id=book_id, sequence=sequence).first()
 
 
-def _build_books_query(max_rating: int = 0, filter_text: str = None):
+def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Optional[int] = None,
+                       db_session: Session = db.session):
     """
     Used to share book search functionality
     :param max_rating:
     :param filter_text:
     :return:
     """
-    query = Book.query
+
+    if user_id is not None:
+
+        # Aliased subquery to get the latest VolumeProgress entry for each book for a given user
+        latest_volume_progress = (
+            db.session.query(
+                VolumeProgress.book_id,
+                func.max(VolumeProgress.timestamp).label("latest_timestamp")
+            )
+            .filter(VolumeProgress.user_id == user_id)
+            .group_by(VolumeProgress.book_id)
+            .subquery()
+        )
+
+        # Aliased for easy reference in join condition
+        vp_alias = aliased(VolumeProgress)
+
+        query = db.session.query(Book, vp_alias)
+    else:
+        query = db.session.query(Book)
+
+    if max_rating > 0:
+        query = query.filter(Book.rating <= max_rating)
+
+    if is_not_blank(filter_text):
+        query = query.filter(Book.name.like(f'%{filter_text}%'))
+
+    return query
+
+
+def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_text: str = None,
+                                     db_session: Session = db.session):
+    """
+    Used to share book search functionality
+    :param max_rating:
+    :param filter_text:
+    :return:
+    """
+
+    # Aliased subquery to get the latest VolumeProgress entry for each book for a given user
+    latest_volume_progress = (
+        db.session.query(
+            VolumeProgress.book_id,
+            func.max(VolumeProgress.timestamp).label("latest_timestamp")
+        )
+        .filter(VolumeProgress.user_id == user_id)
+        .group_by(VolumeProgress.book_id)
+        .subquery()
+    )
+
+    # Aliased for easy reference in join condition
+    vp_alias = aliased(VolumeProgress)
+
+    query = db.session.query(Book, vp_alias)
+
+    query = query.outerjoin(
+        latest_volume_progress,
+        Book.id == latest_volume_progress.c.book_id
+    ).outerjoin(
+        vp_alias,
+        (vp_alias.book_id == Book.id) &
+        (vp_alias.timestamp == latest_volume_progress.c.latest_timestamp)
+    )
 
     if max_rating > 0:
         query = query.filter(Book.rating <= max_rating)
@@ -163,8 +253,10 @@ def _build_books_query(max_rating: int = 0, filter_text: str = None):
 
 
 # Function to list books with a rating less than or equal to max_rating
-def list_books_for_rating(max_rating: int, filter_text: str = None, sort_field=None, sort_descending: bool = False,
-                          query_offset: int = 0, query_limit: int = 0) -> List[Book]:
+def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None, sort_field=None,
+                          sort_descending: bool = False,
+                          query_offset: int = 0, query_limit: int = 0,
+                          db_session: Session = db.session) -> List[tuple[Book, VolumeProgress]]:
     """
     List the books that a user has access to based upon their criteria and the search window
     :param max_rating:
@@ -173,9 +265,11 @@ def list_books_for_rating(max_rating: int, filter_text: str = None, sort_field=N
     :param sort_descending: Is this descending sort?
     :param query_offset: The offset to query from
     :param query_limit: How many items should we return?
+    :param user_id:
+    :param db_session:
     :return:
     """
-    query = _build_books_query(max_rating, filter_text)
+    query = _build_books_with_progress_query(user_id, max_rating, filter_text, db_session)
 
     if sort_descending:
         query = query.order_by(sort_field.desc(), Book.id.desc())
@@ -203,9 +297,9 @@ def count_books_for_rating(max_rating: int, filter_text: str = None) -> int:
 
 
 # Function to insert or update a book record
-def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url: str, start_chapter_id: str,
-                rss_url: str = None, extra_url: str = None, skip: str = None, rating: int = 200, tags: str = None,
-                style: str = 'P', logger: TaskWrapper = None, db_session: Session = db.session):
+def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url: str, rss_url: str = None,
+                extra_url: str = None, start_chapter_id: str = None, skip: str = None, rating: int = 200,
+                tags: str = None, style: str = 'P', logger: TaskWrapper = None, db_session: Session = db.session):
     """
     Update/Insert a book
     :param db_session:
@@ -361,7 +455,9 @@ def upsert_recent(user_id: int, book_id: str, chapter_id: str, page_number: int 
     """
     try:
         # Try to get the book with the specified ID
-        existing_progress = db_session.query(VolumeProgress).filter_by(user_id=user_id, book_id=book_id).one()
+        existing_progress = db_session.query(VolumeProgress).filter(VolumeProgress.user_id == user_id,
+                                                                    VolumeProgress.book_id == book_id,
+                                                                    VolumeProgress.chapter_id == chapter_id).one()
 
         existing_progress.chapter_id = chapter_id
         existing_progress.page_number = page_number

@@ -140,6 +140,12 @@ class VolumeProgress(db.Model):
     # Relationships
     user = db.relationship('User', backref=db.backref('volume_progress', cascade='all, delete-orphan'))
     book = db.relationship('Book', backref=db.backref('volume_progress', cascade='all, delete-orphan'))
+    # chapter = db.relationship('Chapter', backref=db.backref('volume_progress', cascade='all, delete-orphan'))
+
+    # Composite unique constraint to prevent duplicate progress records
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'book_id', 'chapter_id', name='_user_book_chapter_uc'),
+    )
 
 
 class AppProperties(db.Model):
@@ -150,7 +156,7 @@ class AppProperties(db.Model):
     comment = db.Column(db.Text, nullable=True)  # Comment, optional
 
 
-# Series
+# Media
 
 # Media Folder model
 class MediaFolder(db.Model):
@@ -192,7 +198,6 @@ def prevent_deletion_if_children(mapper, connection, target):
         raise IntegrityError(None, None, "Cannot delete MediaFolder with existing MediaFile records.")
 
 
-# Chapter model
 class MediaFile(db.Model):
     __tablename__ = 'mediafiles'
 
@@ -213,6 +218,29 @@ class MediaFile(db.Model):
 
     # Establish the back-population from Chapter to Book
     mediafolder = db.relationship("MediaFolder", back_populates="mediafiles")
+
+    # Single relationship to MediaFileProgress
+    progress_records = db.relationship(
+        'MediaFileProgress',
+        back_populates='file',
+        cascade='all, delete-orphan'
+    )
+
+
+class MediaFileProgress(db.Model):
+    __tablename__ = 'media_file_progress'
+
+    id = db.Column(db.Integer, primary_key=True)  # Primary key
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'),
+                        nullable=False)  # Foreign key to User table
+    file_id = db.Column(db.String(36), db.ForeignKey('mediafiles.id', ondelete='CASCADE'),
+                        nullable=False)  # Foreign key to Book table
+    progress = db.Column(db.Float, nullable=False)  # Page percent, optional
+    timestamp = db.Column(db.DateTime, nullable=False)  # Recent event datetime, optional
+
+    # Define relationships
+    user = db.relationship('User', backref=db.backref('media_file_progress', cascade='all, delete-orphan'))
+    file = db.relationship('MediaFile', back_populates='progress_records')
 
 
 # Initialize the database

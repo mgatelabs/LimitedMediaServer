@@ -4,12 +4,15 @@ import os
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, current_app
 from sqlalchemy.orm import sessionmaker
 
-from auth_utils import shall_authenticate_user, feature_required
+from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username
+from common_utils import generate_failure_response, generate_success_response
 from db import db
 from feature_flags import MANAGE_PROCESSES, VIEW_PROCESSES, MANAGE_APP
+from number_utils import is_integer
+from text_utils import is_blank
 from thread_utils import TaskManager, get_exception, TaskWrapper
 
 process_blueprint = Blueprint('process', __name__)
@@ -33,7 +36,7 @@ def execute_task(task_wrapper: TaskWrapper, app):
 
             # Create a new session for the thread
             task_wrapper.trace('Before Local Session')
-
+            task_wrapper.mark_start()
             task_wrapper.always('Executing')
             task_wrapper.set_waiting(False)
             task_wrapper.run(session)
@@ -49,6 +52,7 @@ def execute_task(task_wrapper: TaskWrapper, app):
         task_wrapper.error(
             'Exception: ' + ex_json['message'] + ' - ' + ex_json['file'] + '[' + ex_json['line'] + ']')
     finally:
+        task_wrapper.mark_end()
         if session is not None:
             session.close()
 
@@ -66,7 +70,7 @@ def add_plugin_task(user_details):
         try:
             json_data = json.loads(bundle_data)
         except json.JSONDecodeError:
-            return jsonify({"status": "FAIL", "message": "Invalid JSON data"}), 400
+            return generate_failure_response("Invalid JSON data", 400)
 
         task_id = json_data['id']
         task_args = json_data['args']
@@ -91,8 +95,7 @@ def add_plugin_task(user_details):
             if plugin.get_action_id() == task_id:
 
                 if (plugin.get_feature_flags() & user_details['features']) != plugin.get_feature_flags():
-                    return jsonify(
-                        {"status": "FAIL", "message": "User is not allowed to use the specified plugin"}), 401
+                    return generate_failure_response("User is not allowed to use the specified plugin", 401)
 
                 error_list = plugin.process_action_args(task_args)
                 if error_list is None:
@@ -109,7 +112,7 @@ def add_plugin_task(user_details):
                                 task.future = future
                                 task_manager.add_task(task)
 
-                            return jsonify({"status": "OK", "message": "Tasks added successfully"})
+                            return generate_success_response('Tasks added successfully')
                         else:
                             # Execute the task asynchronously
                             task_wrapper.update_logging_level(logging_level)
@@ -118,16 +121,16 @@ def add_plugin_task(user_details):
 
                             task_manager.add_task(task_wrapper)
 
-                            return jsonify(
-                                {"status": "OK", "message": "Task added successfully", "task_id": task_wrapper.task_id})
+                            return generate_success_response('Task added successfully',
+                                                             {"task_id": task_wrapper.task_id})
                     else:
-                        return jsonify({"error": "Unknown TASK"}), 400
+                        return generate_failure_response("Unknown TASK")
 
                 else:
-                    return jsonify({"status": "FAIL", "message": "Argument errors: " + str(error_list)})
+                    return generate_failure_response("Argument errors: " + str(error_list))
 
     # If the 'bundle' field is missing, return an error response
-    return jsonify({"status": "FAIL", "message": "Form field 'bundle' is missing"}), 400
+    return generate_failure_response("parameter bundle is missing", 400)
 
 
 @process_blueprint.route('/clean', methods=['POST'])
@@ -151,7 +154,7 @@ def clean_tasks(user_details):
         task_manager.remove_task_by_id(task_id)
 
     # If the 'bundle' field is missing, return an error response
-    return jsonify({}), 200
+    return generate_success_response('')
 
 
 @process_blueprint.route('/sweep', methods=['POST'])
@@ -175,7 +178,7 @@ def sweep_tasks(user_details):
         task_manager.remove_task_by_id(task_id)
 
     # If the 'bundle' field is missing, return an error response
-    return jsonify({}), 200
+    return generate_success_response('')
 
 
 @process_blueprint.route('/stop', methods=['POST'])
@@ -185,7 +188,7 @@ def stop_service(user_details):
     # noinspection PyProtectedMember
     os._exit(1)
 
-    return jsonify({"message": "OK"}), 200
+    return generate_success_response("OK", 200)
 
 
 @process_blueprint.route('/restart', methods=['POST'])
@@ -195,7 +198,7 @@ def restart_service(user_details):
     # noinspection PyProtectedMember
     os._exit(69)
 
-    return jsonify({"message": "OK"}), 200
+    return generate_success_response("OK", 200)
 
 
 @process_blueprint.route('/status/all', methods=['POST'])
@@ -219,16 +222,23 @@ def get_all_task_status(user_detail):
             "failure": task.is_failure,
             "warning": task.is_warning,
             "worked": task.is_worked,
-            "log": task.log_entries
+            "logging": task.logging_level,
+            "log": task.log_entries,
+            "delay_duration": task.duration_delayed,
+            "running_duration": task.duration_running,
+            "total_duration": task.duration_total,
+            "init_timestamp": task.init_timestamp,
+            "start_timestamp": task.start_timestamp,
+            "end_timestamp": task.end_timestamp,
         })
 
-    return jsonify(result)
+    return generate_success_response('', {'tasks': result})
 
 
 # REST endpoint to get task status
 @process_blueprint.route('/status/<int:task_id>', methods=['POST'])
-@feature_required(process_blueprint, VIEW_PROCESSES)
-def get_task_status(user_detail, task_id):
+@feature_required_silent(process_blueprint, VIEW_PROCESSES)
+def get_task_status(task_id):
     global task_manager
 
     tasks = task_manager.get_all_tasks()
@@ -246,11 +256,18 @@ def get_task_status(user_detail, task_id):
                 "failure": task.is_failure,
                 "warning": task.is_warning,
                 "worked": task.is_worked,
-                "log": task.log_entries
+                "logging": task.logging_level,
+                "log": task.log_entries,
+                "delay_duration": task.duration_delayed,
+                "running_duration": task.duration_running,
+                "total_duration": task.duration_total,
+                "init_timestamp": task.init_timestamp,
+                "start_timestamp": task.start_timestamp,
+                "end_timestamp": task.end_timestamp,
             }
-            return jsonify(status)
+            return generate_success_response('', {'task': status})
 
-    return jsonify({"error": "Task not found"}), 404
+    return generate_failure_response("Task not found", 404)
 
 
 # REST endpoint to get task status
@@ -259,15 +276,46 @@ def get_task_status(user_detail, task_id):
 def cancel_task(user_details, task_id):
     global task_manager
 
+    username = get_username(user_details)
+
     tasks = task_manager.get_all_tasks()
 
     for task in tasks:
         if task.task_id == task_id:
+            task.always(f'Task Cancelled by {username}')
             task.cancel()
 
-            return jsonify({"message": "Task canceled"})
+            return generate_success_response("Task canceled")
 
-    return jsonify({"message": "Task not found"}), 404
+    return generate_failure_response(f"Task {task_id} not found", 404)
+
+
+# REST endpoint to get task status
+@process_blueprint.route('/logging/<int:task_id>', methods=['POST'])
+@feature_required_silent(process_blueprint, MANAGE_PROCESSES)
+def change_task_logging(task_id):
+    global task_manager
+
+    tasks = task_manager.get_all_tasks()
+
+    level = request.form.get('level')
+
+    if is_blank(level):
+        return generate_failure_response('level parameter is required')
+
+    if not is_integer(level):
+        return generate_failure_response('level parameter is not an integer')
+    level = int(level)
+
+    if level < 0 or level > 50 or level % 10 != 0:
+        return generate_failure_response('level parameter is not valid')
+
+    for task in tasks:
+        if task.task_id == task_id:
+            task.update_logging_level(level)
+            return generate_success_response("Task level updated")
+
+    return generate_failure_response("Task not found", 404)
 
 
 @process_blueprint.route('/promote/<int:task_id>', methods=['POST'])
@@ -276,6 +324,6 @@ def promote_task(user_details, task_id):
     global task_manager
 
     if task_manager.move_task_to_top(task_id):
-        return jsonify({"message": "Task moved"})
+        return generate_success_response("Task moved")
     else:
-        return jsonify({"message": "Task not found"}), 404
+        return generate_failure_response("Task not found", 404)

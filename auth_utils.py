@@ -276,3 +276,33 @@ def get_user_volume_limit(user_details) -> Optional[int]:
         return 0
 
     return user_details.get('limits').get('volume', 0)
+
+
+def get_uid(user_details) -> Optional[int]:
+    """
+    Extract the USER UID user_details.
+    :param user_details: Dictionary containing user details.
+    :return: Integer value of the user or None.
+    """
+    if user_details is None:
+        return None
+
+    if 'uid' not in user_details:
+        return None
+
+    return user_details.get('uid')
+
+
+def get_username(user_details) -> Optional[str]:
+    """
+    Extract the USERNAME from user_details.
+    :param user_details: Dictionary containing user details.
+    :return: Integer value of the user or None.
+    """
+    if user_details is None:
+        return None
+
+    if 'username' not in user_details:
+        return None
+
+    return user_details.get('username')

@@ -66,7 +66,7 @@ class UpdateAllCaches(ActionPlugin):
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
     def create_task(self, session: Session, args):
-        return UpdateAllJson("Update", 'Cache', 'clean_previews' in args and args['clean_previews'] == 'y')
+        return UpdateAllJson("Update", 'Cache', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
 class UpdateSingleCache(ActionBookPlugin):
@@ -128,7 +128,7 @@ class UpdateSingleCache(ActionBookPlugin):
 
     def create_task(self, session: Session, args):
         return UpdateSingleJson("Update", 'Cache', args['series_id'],
-                                'clean_previews' in args and args['clean_previews'] == 'y')
+                                'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
 def custom_chapter_sorting(obj):

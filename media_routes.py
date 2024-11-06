@@ -7,7 +7,7 @@ from PIL import Image
 from flask import Blueprint, request, current_app, make_response, send_from_directory, Response, send_file
 from werkzeug.utils import secure_filename
 
-from auth_utils import feature_required, feature_required_with_cookie, get_user_features, get_user_group_id
+from auth_utils import feature_required, feature_required_with_cookie, get_user_features, get_user_group_id, get_uid
 from common_utils import generate_success_response, generate_failure_response
 from constants import PROPERTY_SERVER_MEDIA_READY, COMMON_MEDIA_RATINGS, PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, \
     PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER
@@ -17,7 +17,7 @@ from feature_flags import VIEW_MEDIA, MANAGE_MEDIA, MEDIA_PLUGINS, MANAGE_APP
 from file_utils import is_valid_mime_type
 from media_queries import find_folder_by_id, find_root_folders, find_folders_in_folder, find_files_in_folder, \
     insert_folder, update_folder, find_file_by_id, update_file, count_folders_in_folder, count_root_folders, \
-    count_files_in_folder, insert_file
+    count_files_in_folder, insert_file, upsert_progress, find_progress_entries
 from media_utils import calculate_offset_limit, parse_range_header, get_data_for_mediafile, get_media_max_rating, \
     get_folder_group_checker, get_folder_rating_checker, user_can_see_rating
 from number_utils import is_integer, is_boolean, parse_boolean
@@ -54,6 +54,7 @@ def list_media(user_details: dict) -> tuple:
     filter_text = clean_string(request.form.get('filter_text'))
 
     folder_group_checker = get_folder_group_checker(user_details)
+    user_uid = get_uid(user_details)
 
     if is_not_blank(offset) and is_integer(offset):
         offset = int(offset)
@@ -142,7 +143,7 @@ def list_media(user_details: dict) -> tuple:
 
         if query_stats['files_needed']:
             file_rows = find_files_in_folder(folder_id, filter_text, query_stats['file_offset'],
-                                             query_stats['file_limit'], file_sort, sort_descending, None)
+                                             query_stats['file_limit'], file_sort, sort_descending, None, user_uid)
         else:
             file_rows = []
 
@@ -177,9 +178,20 @@ def list_media(user_details: dict) -> tuple:
 
     for row in file_rows:
         the_time = convert_datetime_to_yyyymmdd(row.created)
+
+        user_progress = next(
+            (progress for progress in row.progress_records if progress.user_id == user_uid),
+            None
+        )
+
+        if user_progress is None:
+            progress = '0'
+        else:
+            progress = f'{user_progress.progress:.5f}'
+
         file_data.append(
             {"id": row.id, "name": row.filename, "mime_type": row.mime_type, "preview": row.preview,
-             "filesize": row.filesize, "archive": row.archive,
+             "filesize": row.filesize, "archive": row.archive, "progress": progress,
              "created": the_time, "updated": the_time})
 
     return generate_success_response('', {"info": current_info, "paging": {"total": total_items, "offset": offset},
@@ -520,6 +532,46 @@ def put_media_file(user_details: dict) -> tuple:
         return generate_success_response('File update')
     else:
         return generate_failure_response('Failed to update file')
+
+
+@media_blueprint.route('/file/progress', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def put_media_progress(user_details: dict) -> tuple:
+    file_id = clean_string(request.form.get('file_id'))
+    progress = clean_string(request.form.get('progress'))
+
+    # Checkers
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    # Name checks
+    if is_blank(progress):
+        return generate_failure_response('progress parameter is required')
+
+    # Find the row
+    file_row = find_file_by_id(file_id)
+
+    if file_row is None:
+        return generate_failure_response('Could not find file to update')
+
+    # Find the folder
+    folder_row = file_row.mediafolder
+
+    if folder_row is None:
+        return generate_failure_response('File does not have a parent')
+
+    if not folder_rating_checks(folder_row) or not folder_group_checks(folder_row):
+        return generate_failure_response('User does not have access to containing folder')
+
+    try:
+        progress = float(progress)
+    except Exception as e:
+        logging.exception(e)
+        return generate_failure_response('Failed to parse progress value')
+
+    upsert_progress(get_uid(user_details), file_id, progress, datetime.now(timezone.utc))
+
+    return generate_success_response('')
 
 
 @media_blueprint.route('/file/migrate', methods=['POST'])
@@ -1089,3 +1141,33 @@ def list_groups(user_details):
         group_list.append(row)
 
     return generate_success_response('', {"groups": group_list})
+
+
+# Recent History
+
+@media_blueprint.route('/list/history', methods=['POST'])
+@feature_required(media_blueprint, VIEW_MEDIA)
+def list_history(user_details):
+    user_uid = get_uid(user_details)
+
+    max_rating = get_media_max_rating(user_details)
+
+    rows = find_progress_entries(user_uid, max_rating)
+
+    results = []
+
+    for row in rows:
+
+        user_progress = row.progress
+        if user_progress is None:
+            progress = '0'
+        else:
+            progress = f'{user_progress:.5f}'
+
+        the_time = convert_datetime_to_yyyymmdd(row.timestamp)
+
+        results.append(
+            {"file_id": row.file_id, "name": row.file.filename, "mime_type": row.file.mime_type, "preview": row.file.preview,
+             "progress": progress, "timestamp": the_time})
+
+    return generate_success_response('', {"history": results})

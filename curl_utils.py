@@ -1,6 +1,7 @@
 import subprocess
 import platform
 import urllib
+from typing import Optional
 
 from thread_utils import TaskWrapper, NoOpTaskWrapper
 
@@ -52,12 +53,56 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
         task_wrapper.error(f"Error: {e}")
         return False
 
+def custom_curl_headers(url, headers=None, download_file=None, task_wrapper:TaskWrapper = NoOpTaskWrapper()):
+    """
+    This is to call the custom CHROM based CURL as a GET command
+    :param url:
+    :param headers:
+    :param download_file:
+    :param task_wrapper:
+    :return:
+    """
+    if platform.system() != 'Linux':
+        print("This function can only run on a Linux-based device.")
+        return False
+
+    command = ['curl_chrome116', url, '-I']
+    if headers:
+        for key, value in headers.items():
+            command.extend(['-H', f'{key}: {value}'])
+
+    if download_file:
+        command.extend(['-o', download_file])
+
+    if task_wrapper.can_trace():
+        task_wrapper.trace(" ".join(command))
+
+    try:
+
+        if task_wrapper.can_trace():
+            result = subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            output_normal = result.stdout.decode('utf-8')
+            output_error = result.stderr.decode('utf-8')
+
+            task_wrapper.trace(f'Output: {output_normal}')
+            task_wrapper.trace(f'Error: {output_error}')
+            task_wrapper.trace(f'Return Code: {result.returncode}')
+        else:
+            subprocess.run(command, check=True)
+
+        return True
+    except subprocess.CalledProcessError as e:
+        task_wrapper.set_failure()
+        task_wrapper.error(f"Error: {e}")
+        return False
+
 
 def dict_to_urlencoded(data: dict) -> str:
     return urllib.parse.urlencode(data)
 
 
-def custom_curl_post(url, data, headers=None, download_file=None, task_logger:TaskWrapper=None):
+def custom_curl_post(url, data: Optional[dict[str, str]], headers=None, download_file=None, task_logger:TaskWrapper=None):
     """
     This is to call the custom CHROM based CURL as a POST command
     :param url:
@@ -78,7 +123,8 @@ def custom_curl_post(url, data, headers=None, download_file=None, task_logger:Ta
     command.extend(['-H', f'Content-Type: application/x-www-form-urlencoded; charset=UTF-8'])
 
     command.extend(['-X', 'POST'])
-    command.extend(['-d', dict_to_urlencoded(data)])
+    if data is not None:
+        command.extend(['-d', dict_to_urlencoded(data)])
 
     if download_file:
         command.extend(['-o', download_file])

@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
 
-from curl_utils import custom_curl_get, read_temp_file
+from curl_utils import custom_curl_get, read_temp_file, custom_curl_post, custom_curl_headers
 from thread_utils import TaskWrapper
 
 
@@ -106,6 +106,66 @@ def download_secure_text(url, headers=None, task_logger: TaskWrapper = None):
 
     try:
         if custom_curl_get(url, headers, temp_file_path, task_logger):
+            return read_temp_file(temp_file_path)
+    except Exception as e:
+        if task_logger is not None:
+            task_logger.add_log(f'Error downloading file {url}')
+        return False
+    finally:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+def download_secure_text_post(url, headers=None, task_logger: TaskWrapper = None):
+    """
+    Download a text-based file from the given URL and return the text
+
+    Args:
+    url (str): The URL of the file to download.
+    destination_folder (str): The path of the folder where the file will be saved.
+    filename (str): The name of the file.
+
+    Returns:
+    bool: True if the download was successful, False otherwise.
+    """
+    if headers is None:
+        headers = {}
+
+    # Get a temporary file path
+    temp_file_path = tempfile.mktemp()
+
+    try:
+        if custom_curl_post(url, None, headers, temp_file_path, task_logger):
+            return read_temp_file(temp_file_path)
+    except Exception as e:
+        if task_logger is not None:
+            task_logger.add_log(f'Error downloading file {url}')
+        return False
+    finally:
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+
+
+def download_secure_header_get(url, headers=None, task_logger: TaskWrapper = None):
+    """
+    Download a text-based file from the given URL and return the text
+
+    Args:
+    url (str): The URL of the file to download.
+    destination_folder (str): The path of the folder where the file will be saved.
+    filename (str): The name of the file.
+
+    Returns:
+    bool: True if the download was successful, False otherwise.
+    """
+    if headers is None:
+        headers = {}
+
+    # Get a temporary file path
+    temp_file_path = tempfile.mktemp()
+
+    try:
+        if custom_curl_headers(url, headers, temp_file_path, task_logger):
             return read_temp_file(temp_file_path)
     except Exception as e:
         if task_logger is not None:
