@@ -103,6 +103,20 @@ The server can be used with self-signed certificates for some added security.  W
 1. -ssl_cert PATH_TO_cert.pem
 2. -ssl_key PATH_TO_key.pem
 
+## Self Signed Certificates
+
+If you want to run with HTTPS and you are using a raspberry pi, use the following command from the terminal to generate a key pair:
+
+```
+openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
+```
+
+Then in the script to load the service (seen later) you can point it to the files on disk via the following parameters:
+
+```
+python server.py -ssl_cert /home/admin/ssl/cert.pem -ssl_key /home/admin/ssl/key.pem
+```
+
 ## Advanced Development Configuration
 
 ### As a Raspberry PI 5 media/development server
