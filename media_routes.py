@@ -1156,7 +1156,7 @@ def list_history(user_details):
 
     results = []
 
-    for row in rows:
+    for row, folder_name in rows:
 
         user_progress = row.progress
         if user_progress is None:
@@ -1167,7 +1167,8 @@ def list_history(user_details):
         the_time = convert_datetime_to_yyyymmdd(row.timestamp)
 
         results.append(
-            {"file_id": row.file_id, "name": row.file.filename, "mime_type": row.file.mime_type, "preview": row.file.preview,
+            {"folder_name": folder_name, "file_id": row.file_id, "name": row.file.filename,
+             "mime_type": row.file.mime_type, "preview": row.file.preview,
              "progress": progress, "timestamp": the_time})
 
     return generate_success_response('', {"history": results})

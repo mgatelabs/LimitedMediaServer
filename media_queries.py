@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy.exc import NoResultFound
@@ -499,16 +499,17 @@ def find_progress_entry(user_id: int, file_id: str) -> Optional[MediaFileProgres
     return MediaFileProgress.query.filter_by(user_id=user_id, file_id=file_id).first()# Progress
 
 
-def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Session = db.session) -> Optional[list[type[MediaFileProgress]]]:
+def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Session = db.session) -> Optional[List[Tuple[MediaFileProgress, str]]]:
     """
-    Try to find an entry for a media file
-    :param user_id:
-    :param db_sesson:
-    :return:
+    Try to find entries for a media file with the associated folder name.
+    :param user_id: ID of the user.
+    :param max_rating: Maximum folder rating.
+    :param db_session: Database session.
+    :return: List of tuples with MediaFileProgress entries and their associated MediaFolder names.
     """
 
     query = (
-        db_session.query(MediaFileProgress)
+        db_session.query(MediaFileProgress, MediaFolder.name)
         .join(MediaFile, MediaFileProgress.file_id == MediaFile.id)
         .join(MediaFolder, MediaFile.folder_id == MediaFolder.id)
         .filter(

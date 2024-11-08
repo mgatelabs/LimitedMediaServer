@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy import desc, func
@@ -28,7 +28,7 @@ def find_book_by_id(book_id: str, db_session: Session = None) -> Optional[Book]:
 
 # Recent / Viewed
 
-def find_recent_entries(user_id: int, max_rating: int) -> Optional[List[VolumeProgress]]:
+def find_recent_entries(user_id: int, max_rating: int) -> Optional[List[Tuple[VolumeProgress, str]]]:
     """
     Find the user's recent activities, grouped by book_id with the latest timestamp,
     and filtered by the book's rating.
@@ -52,7 +52,7 @@ def find_recent_entries(user_id: int, max_rating: int) -> Optional[List[VolumePr
 
     # Main query: Join with the subquery and filter by max_rating
     return (
-        db.session.query(VolumeProgress)
+        db.session.query(VolumeProgress, BookAlias.name)
         .join(latest_entries_subquery,
               (VolumeProgress.book_id == latest_entries_subquery.c.book_id) &
               (VolumeProgress.timestamp == latest_entries_subquery.c.latest_timestamp))

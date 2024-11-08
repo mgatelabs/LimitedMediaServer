@@ -14,7 +14,6 @@ from db import db, Book
 from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_BOOK
 from number_utils import is_integer
 from text_utils import is_blank, clean_string, is_valid_book_id, is_not_blank
-from user_queries import get_user_by_id
 from volume_queries import list_books_for_rating, find_chapters_by_book, find_book_by_id, find_chapter_by_id, \
     find_chapter_by_sequence, upsert_book, upsert_recent, \
     find_bookmarks, add_volume_bookmark, remove_volume_bookmark, \
@@ -278,6 +277,7 @@ def push_progress(user_details):
 
     return generate_success_response('')
 
+
 # Recent History
 
 @volume_blueprint.route('/list/history', methods=['POST'])
@@ -290,7 +290,7 @@ def list_history(user_details):
 
     results = []
 
-    for row in rows:
+    for row, book_name in rows:
 
         if row.page_number is not None:
             mode = 'page'
@@ -304,9 +304,11 @@ def list_history(user_details):
         the_time = convert_datetime_to_yyyymmdd(row.timestamp)
 
         results.append(
-            {"book": row.book_id, "chapter": row.chapter_id, "mode": mode, "page": value, "timestamp": the_time})
+            {"name": book_name, "book": row.book_id, "chapter": row.chapter_id, "mode": mode, "page": value,
+             "timestamp": the_time})
 
     return generate_success_response('', {"history": results})
+
 
 # Image Serving
 
