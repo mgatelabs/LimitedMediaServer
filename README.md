@@ -55,6 +55,14 @@ I built this server to take advantage of the new Raspberry PI 5 feature to run o
    1. The system can discover and utilize plugins to extend basic functionality
    2. Plugins can use Arguments or Properties
 
+### Example Media Browser
+
+![image](https://github.com/user-attachments/assets/56eab409-3375-40b7-9312-dc4cbd167817)=
+
+### Example Process Detail
+
+![image](https://github.com/user-attachments/assets/b6197dec-37f8-4db1-bb3e-65bd865d05b2)
+
 ## Basic Setup
 
 Open bash or a terminal on the target server to your desired root folder.
