@@ -69,6 +69,14 @@ In this example the user could select items on the left side to delete or move t
 
 ![image](https://github.com/user-attachments/assets/b6197dec-37f8-4db1-bb3e-65bd865d05b2)
 
+### How to access Server Management
+
+![image](https://github.com/user-attachments/assets/bb33e2e0-f2fd-4876-b6df-a5a355e14ad6)
+
+1. User Listing lets you Add, Edit and Remove users
+2. Group Listing lets you setup a security group, which users can have a group and media folders can have a group
+3. Property Listings lets you change how the server works.  Paths to folders, ports and other settings.
+
 ## Basic Setup
 
 Open bash or a terminal on the target server to your desired root folder.
