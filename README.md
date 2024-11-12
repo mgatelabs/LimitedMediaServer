@@ -134,7 +134,7 @@ This is an example script used on a Raspberry Pi 5 to control the execution of t
 5. Update the DB is needed
 6. Start the server
 
-In this example this script it was placed in the `/home/admin` folder as `run_limitedmediaserver.sh`.  Also, the projects were cloned into `/home/admin`.
+In this example this script it was placed in the `/home/admin` folder as `limitedmediaserver_script.sh`.  Also, the projects were cloned into `/home/admin`.
 
 ```shell
 #!/bin/bash
@@ -188,6 +188,66 @@ echo "Limited Media Server End!"
 ```
 
 With this file in place, you would be able to create a service to start automatically.
+
+### Setting up a Service
+
+#### Create your script
+```shell
+chmod +x /home/admin/limitedmediaserver_script.sh
+```
+#### Create a systemd service unit file
+
+```shell
+sudo nano /etc/systemd/system/limitedmediaserver.service
+```
+
+#### Edit the service file
+
+```text
+[Unit]
+Description=Limited Media Server
+After=network.target
+
+[Service]
+ExecStart=/home/admin/limitedmediaserver_script.sh
+WorkingDirectory=/home/admin/
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=admin
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### Enable the service
+
+```shell
+sudo systemctl daemon-reload                      # Reload systemd manager configuration
+sudo systemctl enable limitedmediaserver.service  # Enable the service to start on boot
+sudo systemctl start limitedmediaserver.service   # Start the service now
+```
+
+#### Control the service
+
+```shell
+sudo systemctl start limitedmediaserver.service    # Start the service
+sudo systemctl stop limitedmediaserver.service     # Stop the service
+sudo systemctl restart limitedmediaserver.service  # Restart the service
+sudo systemctl status limitedmediaserver.service   # Check the status of the service
+```
+
+#### Check logs
+
+```shell
+journalctl -u limitedmediaserver.service
+```
+
+#### Live Logs
+
+```shell
+journalctl --follow -u limitedmediaserver.service
+```
 
 ## Hardware Configuration
 
