@@ -54,7 +54,8 @@ class CheckFolderIntegrityTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return CheckFolderIntegrity("Check Integrity", 'Folder', args['folder_id'], args['fix'] == 'y',
+        folder_id = args['folder_id']
+        return CheckFolderIntegrity("Check Integrity", f'Check integrity of folder: {folder_id}', folder_id, args['fix'] == 'y',
                                     self.primary_path,
                                     self.archive_path)
 
@@ -99,7 +100,7 @@ class CheckAllFolderIntegrityTask(ActionMediaPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return CheckFolderIntegrity("Check Integrity", 'All', None, args['fix'] == 'y',
+        return CheckFolderIntegrity("Check Integrity", 'Check integrity for all folders', None, args['fix'] == 'y',
                                     self.primary_path,
                                     self.archive_path)
 

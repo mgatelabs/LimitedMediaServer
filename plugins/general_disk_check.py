@@ -1,7 +1,9 @@
 import argparse
+import logging
 
 import psutil
 from flask_sqlalchemy.session import Session
+from sqlalchemy.testing.plugin.plugin_base import logging
 
 from feature_flags import MANAGE_APP
 from plugin_system import ActionPlugin
@@ -48,21 +50,24 @@ class CheckDiskStatus(ActionPlugin):
         return 'utility'
 
     def create_task(self, session: Session, args):
-        return CreateDiskCheck("Disk", 'Check')
+        return CreateDiskCheck("Disk", 'Check Disk Space')
 
 
 def get_disk_usage():
     partitions = psutil.disk_partitions()
     disk_usage_info = []
     for partition in partitions:
-        partition_info = {'device': partition.device,
-                          'mountpoint': partition.mountpoint,
-                          'fstype': partition.fstype,
-                          'total': psutil.disk_usage(partition.mountpoint).total,
-                          'used': psutil.disk_usage(partition.mountpoint).used,
-                          'free': psutil.disk_usage(partition.mountpoint).free,
-                          'percent': psutil.disk_usage(partition.mountpoint).percent}
-        disk_usage_info.append(partition_info)
+        try:
+            partition_info = {'device': partition.device,
+                              'mountpoint': partition.mountpoint,
+                              'fstype': partition.fstype,
+                              'total': psutil.disk_usage(partition.mountpoint).total,
+                              'used': psutil.disk_usage(partition.mountpoint).used,
+                              'free': psutil.disk_usage(partition.mountpoint).free,
+                              'percent': psutil.disk_usage(partition.mountpoint).percent}
+            disk_usage_info.append(partition_info)
+        except Exception as ex:
+            logging.exception(ex)
     return disk_usage_info
 
 

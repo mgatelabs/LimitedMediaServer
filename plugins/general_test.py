@@ -47,7 +47,7 @@ class TestTask(ActionPlugin):
 
 
     def create_task(self, session: Session, args):
-        return Test("Test", '')
+        return Test("Test", 'Test Process')
 
     def get_feature_flags(self):
         return MANAGE_PROCESSES

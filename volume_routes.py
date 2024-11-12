@@ -1,5 +1,4 @@
 import logging
-import logging
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -11,8 +10,9 @@ from common_utils import generate_success_response, generate_failure_response
 from constants import PROPERTY_SERVER_VOLUME_FOLDER, PROPERTY_SERVER_VOLUME_READY
 from date_utils import convert_date_to_yyyymmdd, convert_datetime_to_yyyymmdd
 from db import db, Book
-from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_BOOK
-from number_utils import is_integer
+from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_VOLUME
+from image_utils import split_and_save_image
+from number_utils import is_integer, parse_boolean, is_boolean
 from text_utils import is_blank, clean_string, is_valid_book_id, is_not_blank
 from volume_queries import list_books_for_rating, find_chapters_by_book, find_book_by_id, find_chapter_by_id, \
     find_chapter_by_sequence, upsert_book, upsert_recent, \
@@ -278,6 +278,103 @@ def push_progress(user_details):
     return generate_success_response('')
 
 
+# Modifications
+
+@volume_blueprint.route('/remove/image', methods=['POST'])
+@feature_required(volume_blueprint, MANAGE_VOLUME)
+def remove_image(user_details):
+    max_rating = get_volume_max_rating(user_details)
+    book_id = clean_string(request.form.get('book_id'))
+    chapter_id = clean_string(request.form.get('chapter_id'))
+    file_name = clean_string(request.form.get('file_name'))
+
+    book_row = find_book_by_id(book_id)
+
+    if book_row is None:
+        return generate_failure_response('Could not find book')
+
+    if book_row.rating > max_rating:
+        return generate_failure_response('You are not allowed to view this book')
+
+    chapter_row = find_chapter_by_id(book_id, chapter_id)
+
+    if chapter_row is None:
+        return generate_failure_response('Could not find chapter')
+
+    if chapter_row.remove_image(file_name):
+        file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_id, chapter_id, file_name)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            os.unlink(file_path)
+            if not os.path.exists(file_path):
+                db.session.commit()
+                return generate_success_response('Image removed')
+            else:
+                db.session.rollback()
+                return generate_failure_response('Could not erase image')
+        else:
+            db.session.commit()
+            return generate_success_response('Image already missing')
+    else:
+        return generate_failure_response('Image not found in chapter')
+
+
+@volume_blueprint.route('/split/image', methods=['POST'])
+@feature_required(volume_blueprint, MANAGE_VOLUME)
+def split_image(user_details):
+    max_rating = get_volume_max_rating(user_details)
+    book_id = clean_string(request.form.get('book_id'))
+    chapter_id = clean_string(request.form.get('chapter_id'))
+    file_name = clean_string(request.form.get('file_name'))
+
+    position = clean_string(request.form.get('position'))
+    is_horizontal = clean_string(request.form.get('is_horizontal'))
+    keep_first = clean_string(request.form.get('keep_first'))
+
+    if is_blank(position):
+        return generate_failure_response('position parameter is required')
+    elif not is_integer(position):
+        return generate_failure_response('position parameter is not an integer')
+    else:
+        position = int(position)
+
+    if is_blank(is_horizontal):
+        return generate_failure_response('is_horizontal parameter is required')
+    elif not is_boolean(is_horizontal):
+        return generate_failure_response('is_horizontal parameter is not an boolean')
+    else:
+        is_horizontal = parse_boolean(is_horizontal)
+
+    if is_blank(keep_first):
+        return generate_failure_response('keep_first parameter is required')
+    elif not is_boolean(keep_first):
+        return generate_failure_response('keep_first parameter is not an boolean')
+    else:
+        keep_first = parse_boolean(keep_first)
+
+    book_row = find_book_by_id(book_id)
+
+    if book_row is None:
+        return generate_failure_response('Could not find book')
+
+    if book_row.rating > max_rating:
+        return generate_failure_response('You are not allowed to view this book')
+
+    chapter_row = find_chapter_by_id(book_id, chapter_id)
+
+    if chapter_row is None:
+        return generate_failure_response('Could not find chapter')
+
+    file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_id, chapter_id, file_name)
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        try:
+            split_and_save_image(file_path, position, is_horizontal, keep_first)
+            return generate_success_response('Image adjusted')
+        except ValueError as ve:
+            return generate_failure_response(str(ve))
+    else:
+        return generate_failure_response('Image not found')
+
+
 # Recent History
 
 @volume_blueprint.route('/list/history', methods=['POST'])
@@ -390,7 +487,7 @@ def serve_preview_image(user_details, book_folder: str, chapter_name: str) -> 'R
 
 
 @volume_blueprint.route('/list/processors', methods=['POST'])
-@feature_required(volume_blueprint, MANAGE_BOOK)
+@feature_required(volume_blueprint, MANAGE_VOLUME)
 def get_processors(user_details: dict) -> tuple:
     """
     Retrieve a list of processors.
@@ -590,7 +687,7 @@ def acquire_book_fields(book_data):
 # Modifications
 
 @volume_blueprint.route('/new', methods=['POST'])
-@feature_required(volume_blueprint, MANAGE_BOOK)
+@feature_required(volume_blueprint, MANAGE_VOLUME)
 def new_book(user_details: dict) -> tuple:
     """
     Add a new book to the library.
@@ -629,7 +726,7 @@ def new_book(user_details: dict) -> tuple:
 
 
 @volume_blueprint.route('/update', methods=['POST'])
-@feature_required(volume_blueprint, MANAGE_BOOK)
+@feature_required(volume_blueprint, MANAGE_VOLUME)
 def update_book(user_details: dict) -> tuple:
     """
     Update an existing book in the library.

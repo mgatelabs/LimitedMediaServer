@@ -55,7 +55,7 @@ class Mp3TagFolderTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return Mp3TagFolder("Update Mp3 Tags", '', args['folder_id'], args['genre'], args['album'], args['year'], self.primary_path, self.archive_path)
+        return Mp3TagFolder("Mp3Tag", 'Update Mp3 Tags', args['folder_id'], args['genre'], args['album'], args['year'], self.primary_path, self.archive_path)
 
 def update_mp3_metadata(title, artist, album, year, genre, file_location):
     # FFmpeg command to update metadata and cover art

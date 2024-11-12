@@ -104,7 +104,8 @@ class MakePreviewsTask(ActionMediaFolderPlugin):
         """
         Create the task to generate previews for a folder.
         """
-        return PreviewFolder("Generate Previews", args['folder_id'], args['folder_id'], self.primary_path,
+        folder_id = args['folder_id']
+        return PreviewFolder("Gen-Prev", f'Generate previews for: {folder_id}', folder_id, self.primary_path,
                              self.archive_path, False, parse_boolean(args['force']))
 
 
@@ -175,7 +176,7 @@ class MakeAllPreviewsTask(ActionMediaPlugin):
         """
         Create the task to generate previews for all folders.
         """
-        return PreviewFolder("Generate All Previews", 'All Folders', '*', self.primary_path, self.archive_path, True)
+        return PreviewFolder("Gen-Prev", 'All Folders', '*', self.primary_path, self.archive_path, True)
 
 
 class PreviewFolder(TaskWrapper):

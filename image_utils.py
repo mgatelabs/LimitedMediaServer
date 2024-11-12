@@ -216,3 +216,50 @@ def clean_images_folder(folder_path, logger: TaskWrapper):
                 logger.debug(f"Deleting {file.name} (error opening file: {e})")
                 file.unlink()  # Remove corrupt or unreadable files
                 logger.set_failure()
+
+
+def split_and_save_image(image_path: str, position: int, is_horizontal: bool, keep_first: bool):
+    """
+    Split an image and only save a part of it
+    :param image_path: The image location
+    :param position: The position top cut the image from
+    :param is_horizontal: True for horizontal cut
+    :param keep_first: True to keep the Top/Left image
+    :return:
+    """
+    # Load the image
+    with Image.open(image_path) as img:
+        # Get dimensions
+        width, height = img.size
+
+        # Sanity check: ensure position is within bounds
+        if is_horizontal:
+            # For horizontal split, position must be between 1 and height - 1
+            if position <= 0 or position >= height:
+                raise ValueError(f"Position {position} is out of bounds for image height {height}.")
+        else:
+            # For vertical split, position must be between 1 and width - 1
+            if position <= 0 or position >= width:
+                raise ValueError(f"Position {position} is out of bounds for image width {width}.")
+
+        #left, top, right, bottom
+
+        # Define the box for cropping
+        if is_horizontal:
+            # Split horizontally at `position`
+            if keep_first:
+                box = (0, 0, width, position)
+            else:
+                box = (0, position, width, height)
+        else:
+            # Split vertically at `position`
+            if keep_first:
+                box = (0, 0, position, height)
+            else:
+                box = (position, 0, width, height)
+
+        # Crop the image
+        cropped_img = img.crop(box)
+
+        # Save the cropped image, overwriting the original with PNG format
+        cropped_img.save(image_path, format="PNG")

@@ -106,6 +106,25 @@ class Chapter(db.Model):
     # Establish the back-population from Chapter to Book
     book = db.relationship("Book", back_populates="chapters")
 
+    def remove_image(self, image_name):
+        # Split the comma-separated image names into a list
+        image_list = self.image_names.split(',')
+
+        # Check if the image_name is in the list
+        if image_name not in image_list:
+            return False
+
+        # Remove the image_name from the list
+        image_list.remove(image_name)
+
+        # Update the image_names by joining the list back into a comma-separated string
+        self.image_names = ','.join(image_list)
+
+        # Update the page_count based on the remaining images
+        self.page_count = len(image_list)
+
+        return True
+
 
 class VolumeBookmark(db.Model):
     __tablename__ = 'volume_bookmarks'

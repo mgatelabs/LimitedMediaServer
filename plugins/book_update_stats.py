@@ -5,7 +5,7 @@ from flask_sqlalchemy.session import Session
 
 from constants import PROPERTY_SERVER_VOLUME_FOLDER
 from date_utils import convert_yyyymmdd_to_date, convert_timestamp_to_datetime
-from feature_flags import MANAGE_BOOK
+from feature_flags import MANAGE_VOLUME
 from image_utils import resize_image
 from plugin_system import ActionPlugin, ActionBookPlugin
 from text_utils import is_blank
@@ -59,14 +59,14 @@ class UpdateAllCaches(ActionPlugin):
         return None
 
     def get_feature_flags(self):
-        return MANAGE_BOOK
+        return MANAGE_VOLUME
 
     def absorb_config(self, config):
         super().absorb_config(config)
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
     def create_task(self, session: Session, args):
-        return UpdateAllJson("Update", 'Cache', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
+        return UpdateAllJson("Update", 'All Volume Definitions', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
 class UpdateSingleCache(ActionBookPlugin):
@@ -120,14 +120,15 @@ class UpdateSingleCache(ActionBookPlugin):
         return None
 
     def get_feature_flags(self):
-        return MANAGE_BOOK
+        return MANAGE_VOLUME
 
     def absorb_config(self, config):
         super().absorb_config(config)
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
     def create_task(self, session: Session, args):
-        return UpdateSingleJson("Update", 'Cache', args['series_id'],
+        series_id = args['series_id']
+        return UpdateSingleJson("Update", f'Update {series_id} Definition', series_id,
                                 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 

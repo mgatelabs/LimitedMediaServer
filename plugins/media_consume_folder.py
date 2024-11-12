@@ -87,7 +87,8 @@ class ConsumeFolderTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return ConsumeFolder("Import Folder", args['folder'], args['folder_id'], args['folder'], args['dest'],
+        folder = args['folder']
+        return ConsumeFolder("Import Folder", f'Import content from: {folder}', args['folder_id'], args['folder'], args['dest'],
                              self.primary_path, self.archive_path)
 
 

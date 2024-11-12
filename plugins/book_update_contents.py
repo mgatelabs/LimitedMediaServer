@@ -6,7 +6,7 @@ from flask_sqlalchemy.session import Session
 
 from constants import PROPERTY_SERVER_VOLUME_FOLDER
 from db import Book
-from feature_flags import MANAGE_BOOK
+from feature_flags import MANAGE_VOLUME
 from plugin_system import ActionPlugin, ActionBookPlugin
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
@@ -83,7 +83,7 @@ class UpdateAllBooksTask(ActionPlugin):
         return 'download'
 
     def get_feature_flags(self):
-        return MANAGE_BOOK
+        return MANAGE_VOLUME
 
     def get_action_args(self):
 
@@ -140,7 +140,7 @@ class UpdateAllBooksTask(ActionPlugin):
 
         for book in interleaved_books:
             results.append(
-                DownloadBookTask("GetBook", book.name, book.id, self.processors, self.book_folder, '*', cleaning))
+                DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder, '*', cleaning))
 
         return results
 
@@ -210,7 +210,7 @@ class UpdateSingleBookTask(ActionBookPlugin):
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
     def get_feature_flags(self):
-        return MANAGE_BOOK
+        return MANAGE_VOLUME
 
     def create_task(self, db_session: Session, args):
 
@@ -221,7 +221,7 @@ class UpdateSingleBookTask(ActionBookPlugin):
         if is_not_blank(book_id):
             book = find_book_by_id(book_id, db_session)
             if book is not None:
-                return DownloadBookTask("GetBook", book.name, book.id, self.processors, self.book_folder, '*',
+                return DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder, '*',
                                         cleaning == 'a')
 
         return results

@@ -84,7 +84,8 @@ class DownloadFromM3u8Task(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return DownloadM3u8("Download M3u8", args['filename'], args['folder_id'], args['filename'], args['url'],
+        filename = args['filename']
+        return DownloadM3u8("Download M3u8", f'Downloading {filename} from M3u8 source', args['folder_id'], filename, args['url'],
                             args['dest'], self.primary_path,
                             self.archive_path, self.temp_path)
 

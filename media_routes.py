@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import shutil
 from datetime import datetime, timedelta, timezone
 
@@ -454,6 +455,70 @@ def delete_media_folder(user_details: dict) -> tuple:
         logging.exception(e)
         return generate_failure_response('Failed to delete folder')
 
+@media_blueprint.route('/folder/move', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def move_media_folder(user_details: dict) -> tuple:
+    # Checkers
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    source_folder_id = clean_string(request.form.get('source_id'))
+    dest_folder_id = clean_string(request.form.get('folder_id'))
+
+    source_row = find_folder_by_id(source_folder_id)
+
+    if source_row is None:
+        return generate_failure_response('Could not find requested folder')
+
+    if not folder_rating_checks(source_row):
+        return generate_failure_response('User is not allowed to move a folder in a folder with a higher rating limit')
+
+    if not folder_group_checks(source_row):
+        return generate_failure_response(
+            'User is not allowed to move a folder in a folder with a different security group')
+
+    if is_not_blank(dest_folder_id):
+        # Destination Folder Check
+
+        target_folder_row = find_folder_by_id(dest_folder_id)
+
+        if target_folder_row is None:
+            return generate_failure_response('Destination folder does not exist')
+
+        if not folder_rating_checks(target_folder_row):
+            return generate_failure_response('User is not allowed to move a file into a folder with a higher rating limit')
+
+        if not folder_group_checks(target_folder_row):
+            return generate_failure_response(
+                'User is not allowed to move a file into a folder with a different security group')
+
+        # Make sure it's not the same folder
+
+        if target_folder_row.id == source_row.id:
+            return generate_failure_response(
+                'Source folder should not equal dest folder')
+
+        if target_folder_row.id == source_row.parent_id:
+            return generate_failure_response(
+                'Source folder should not equal dest folder')
+
+        # Check the limit
+
+        if target_folder_row.rating > source_row.rating:
+            return generate_failure_response(
+                'Target folder has a higher rating over the source')
+
+        target_folder_value = target_folder_row.id
+    else:
+        # Drop a folder to root
+        target_folder_value = None
+
+    # Update the pointer
+    source_row.parent_id = target_folder_value
+
+    db.session.commit()
+
+    return generate_success_response('Folder Moved')
 
 # File Management
 
@@ -667,6 +732,59 @@ def delete_media_file(user_details: dict) -> tuple:
 
     return generate_success_response('File deleted')
 
+@media_blueprint.route('/file/move', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def move_media_file(user_details: dict) -> tuple:
+    # Checkers
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    file_id = clean_string(request.form.get('file_id'))
+    dest_folder_id = clean_string(request.form.get('folder_id'))
+
+    file_row = find_file_by_id(file_id)
+
+    if file_row is None:
+        return generate_failure_response('Could not find requested file')
+
+    # Source Folder Check
+
+    folder_row = file_row.mediafolder
+
+    if folder_row is None:
+        return generate_failure_response('File needs to be inside of a folder')
+
+    if not folder_rating_checks(folder_row):
+        return generate_failure_response('User is not allowed to move a file in a folder with a higher rating limit')
+
+    if not folder_group_checks(folder_row):
+        return generate_failure_response(
+            'User is not allowed to move a file in a folder with a different security group')
+
+    # Destination Folder Check
+
+    target_folder_row = find_folder_by_id(dest_folder_id)
+
+    if target_folder_row is None:
+        return generate_failure_response('Destination folder does not exist')
+
+    if not folder_rating_checks(target_folder_row):
+        return generate_failure_response('User is not allowed to move a file into a folder with a higher rating limit')
+
+    if not folder_group_checks(target_folder_row):
+        return generate_failure_response(
+            'User is not allowed to move a file into a folder with a different security group')
+
+    if target_folder_row.id == folder_row.id:
+        return generate_failure_response(
+            'Source folder should not equal dest folder')
+
+    # Update the pointer
+    file_row.folder_id = target_folder_row.id
+
+    db.session.commit()
+
+    return generate_success_response('File Moved')
 
 # Upload random files
 
@@ -708,6 +826,10 @@ def upload_file(user_details):
     target_file = os.path.join(primary_folder, new_file.id + '.dat')
 
     uploaded_file.save(target_file)
+
+    new_file.filesize = Path(target_file).stat().st_size
+
+    db.session.commit()
 
     return generate_success_response('File uploaded')
 

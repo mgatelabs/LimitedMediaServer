@@ -62,7 +62,7 @@ class UpdateHeaders(ActionPlugin):
         return 'book'
 
     def create_task(self, session: Session, args):
-        return CreateUpdateHeader("Update", 'Headers', args['headers'])
+        return CreateUpdateHeader(args['headers'])
 
 
 def parse_curl_headers(curl_command):
@@ -96,16 +96,16 @@ def save_headers_to_json(headers, filename='headers.json'):
 
 
 class CreateUpdateHeader(TaskWrapper):
-    def __init__(self, name, description, headers):
-        super().__init__(name, description)
+    def __init__(self, headers):
+        super().__init__('Headers', 'Update headers.json file')
         self.headers = headers
 
     def run(self, db_session):
-        self.add_log('Writing headers.json file')
+        self.info('Writing headers.json file')
         self.set_worked()
 
-        if self.can_trace():
+        if self.can_debug():
             for key in self.headers.keys():
-                self.trace(f'{key} - {self.headers[key]}')
+                self.debug(f'{key} - {self.headers[key]}')
 
         save_headers_to_json(self.headers, 'headers.json')

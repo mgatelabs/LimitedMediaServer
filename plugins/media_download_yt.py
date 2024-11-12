@@ -90,7 +90,7 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return DownloadYt("Download YT", '', args['folder_id'], args['url'], args['dest'], self.primary_path,
+        return DownloadYt("Download YT", 'Downloading from YT', args['folder_id'], args['url'], args['dest'], self.primary_path,
                           self.archive_path, self.temp_path)
 
 

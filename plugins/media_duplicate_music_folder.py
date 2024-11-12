@@ -58,7 +58,7 @@ class CleanFolderTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return CleanFolder("De-Duplicate Music Folder", '', args['folder_id'], args['other_folder_id'], args['mode'], self.primary_path, self.archive_path)
+        return CleanFolder("De-Dupe", 'De-Duplicate Music Folder', args['folder_id'], args['other_folder_id'], args['mode'], self.primary_path, self.archive_path)
 
 
 class CleanFolder(TaskWrapper):

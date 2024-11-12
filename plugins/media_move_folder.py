@@ -50,7 +50,7 @@ class MoveFolderTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, session: Session, args):
-        return MoveFolder("Move Folder", '', args['folder_id'], args['dest_id'])
+        return MoveFolder("Move", 'Move Folder', args['folder_id'], args['dest_id'])
 
 
 class MoveFolder(TaskWrapper):
