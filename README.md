@@ -59,6 +59,12 @@ I built this server to take advantage of the new Raspberry PI 5 feature to run o
 
 ![image](https://github.com/user-attachments/assets/56eab409-3375-40b7-9312-dc4cbd167817)=
 
+### Example Split Media Browser
+
+![image](https://github.com/user-attachments/assets/cefcb7ed-afa2-45ab-92b2-f76788fd486d)
+
+In this example the user could select items on the left side to delete or move them to the right side.
+
 ### Example Process Detail
 
 ![image](https://github.com/user-attachments/assets/b6197dec-37f8-4db1-bb3e-65bd865d05b2)
