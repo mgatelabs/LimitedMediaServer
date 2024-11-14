@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from typing import Optional, List, Tuple
+import logging
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy import desc, func
@@ -500,6 +501,9 @@ def manage_book_chapters(book_id: str, chapters, logger: TaskWrapper = None, db_
         pages = ','.join(chapter['files'])
         chapter_date = convert_yyyymmdd_to_date(chapter['date'])
 
+        if logger is not None and logger.can_trace():
+            logger.trace(f"Finding {chapter_name}")
+
         if chapter_name in existing_lookup:
             exiting_chapter = existing_lookup[chapter_name]
             del existing_lookup[chapter_name]
@@ -535,6 +539,12 @@ def manage_book_chapters(book_id: str, chapters, logger: TaskWrapper = None, db_
 
         sequence_number = sequence_number + 1
 
-    for exiting_chapter in existing_lookup:
-        db_session.delete(exiting_chapter)
-        db_session.commit()
+    try:
+        for exiting_chapter in existing_lookup.values():
+            if logger is not None and logger.can_trace():
+                logger.trace(f"Erasing Chapter {exiting_chapter.chapter_id}")
+            db_session.delete(exiting_chapter)
+            db_session.commit()
+    except Exception as ex:
+        logging.exception(ex)
+        logger.info(existing_lookup)

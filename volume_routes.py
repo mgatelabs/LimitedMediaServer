@@ -11,7 +11,7 @@ from constants import PROPERTY_SERVER_VOLUME_FOLDER, PROPERTY_SERVER_VOLUME_READ
 from date_utils import convert_date_to_yyyymmdd, convert_datetime_to_yyyymmdd
 from db import db, Book
 from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_VOLUME
-from image_utils import split_and_save_image
+from image_utils import split_and_save_image, merge_two_images
 from number_utils import is_integer, parse_boolean, is_boolean
 from text_utils import is_blank, clean_string, is_valid_book_id, is_not_blank
 from volume_queries import list_books_for_rating, find_chapters_by_book, find_book_by_id, find_chapter_by_id, \
@@ -90,12 +90,13 @@ def get_books(user_details: dict) -> tuple:
         book_sort = Book.name
         sort_descending = False
 
-    total_books = count_books_for_rating(max_rating, filter_text)
+    total_books = count_books_for_rating(requested_rating_limit, filter_text)
 
     if offset > total_books:
         offset = 0
 
-    books_with_progress = list_books_for_rating(user_uid, max_rating, filter_text, book_sort, sort_descending, offset,
+    books_with_progress = list_books_for_rating(user_uid, requested_rating_limit, filter_text, book_sort,
+                                                sort_descending, offset,
                                                 limit,
                                                 db.session)
 
@@ -314,6 +315,48 @@ def remove_image(user_details):
         else:
             db.session.commit()
             return generate_success_response('Image already missing')
+    else:
+        return generate_failure_response('Image not found in chapter')
+
+
+@volume_blueprint.route('/merge/image', methods=['POST'])
+@feature_required(volume_blueprint, MANAGE_VOLUME)
+def merge_image(user_details):
+    max_rating = get_volume_max_rating(user_details)
+    book_id = clean_string(request.form.get('book_id'))
+    chapter_id = clean_string(request.form.get('chapter_id'))
+    file_name = clean_string(request.form.get('file_name'))
+    alt_file_name = clean_string(request.form.get('alt_file_name'))
+
+    book_row = find_book_by_id(book_id)
+
+    if book_row is None:
+        return generate_failure_response('Could not find book')
+
+    if book_row.rating > max_rating:
+        return generate_failure_response('You are not allowed to view this book')
+
+    chapter_row = find_chapter_by_id(book_id, chapter_id)
+
+    if chapter_row is None:
+        return generate_failure_response('Could not find chapter')
+
+    file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_id, chapter_id, file_name)
+    alt_file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_id, chapter_id, alt_file_name)
+
+    if os.path.exists(file_path) and os.path.isfile(file_path) and os.path.exists(alt_file_path) and os.path.isfile(
+            alt_file_path):
+        try:
+            if merge_two_images(file_path, alt_file_path):
+                if chapter_row.remove_image(alt_file_name):
+                    db.session.commit()
+                    return generate_success_response('Image Merged')
+                else:
+                    return generate_failure_response('Image remove, but reference was not erased.')
+            else:
+                return generate_failure_response('Unable to merge images')
+        except ValueError as ve:
+            return generate_failure_response(str(ve))
     else:
         return generate_failure_response('Image not found in chapter')
 

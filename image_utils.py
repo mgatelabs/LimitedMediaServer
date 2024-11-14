@@ -263,3 +263,35 @@ def split_and_save_image(image_path: str, position: int, is_horizontal: bool, ke
 
         # Save the cropped image, overwriting the original with PNG format
         cropped_img.save(image_path, format="PNG")
+
+
+def merge_two_images(image_a_path, image_b_path):
+    try:
+        # Open both images
+        image_a = Image.open(image_a_path)
+        image_b = Image.open(image_b_path)
+
+        # Check if the widths are the same
+        if image_a.width != image_b.width:
+            return False
+
+        # Calculate the new height (sum of both images' heights)
+        new_height = image_a.height + image_b.height
+
+        # Create a new image with the same width and new height
+        new_image = Image.new("RGB", (image_a.width, new_height))
+
+        # Paste image A at the top and image B right below it
+        new_image.paste(image_a, (0, 0))
+        new_image.paste(image_b, (0, image_a.height))
+
+        # Overwrite A's path with a PNG extension
+        output_path = os.path.splitext(image_a_path)[0] + ".png"
+        new_image.save(output_path, "PNG")
+
+        # Delete image B
+        os.unlink(image_b_path)
+
+        return True
+    except Exception as e:
+        raise ValueError(f"An error occurred: {e}")

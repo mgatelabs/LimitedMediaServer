@@ -281,8 +281,11 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
 
     update_book_live(item_name, convert_yyyymmdd_to_date(json_data['date']), json_data['last'], json_data['cover'],
                      json_data['cover'], task_wrapper, session)
-
+    if task_wrapper.can_trace():
+        task_wrapper.trace('Before manage_book_chapters')
     manage_book_chapters(item_name, json_data['chapters'], task_wrapper, session)
+    if task_wrapper.can_trace():
+        task_wrapper.trace('After manage_book_chapters')
 
 
 def generate_book_definitions(task_wrapper: TaskWrapper, series_id: str = None, book_folder: str = '',
@@ -292,7 +295,10 @@ def generate_book_definitions(task_wrapper: TaskWrapper, series_id: str = None, 
         task_wrapper.add_log("Invalid book folder path.")
         return
 
-    folders = os.listdir(book_folder)
+    if series_id is not None:
+        folders = [series_id]
+    else:
+        folders = os.listdir(book_folder)
     index = 0
 
     for item in folders:
@@ -313,10 +319,7 @@ def generate_book_definitions(task_wrapper: TaskWrapper, series_id: str = None, 
         item_path = os.path.join(book_folder, item)
         if os.path.isdir(item_path):
             try:
-                # if session is not None:
                 generate_db_for_folder(session, item, item_path, task_wrapper, clean_previews)
-                # else:
-                #    generate_json_for_folder(item, item_path, lib, task_wrapper, clean_previews)
             except Exception as ex:
                 task_wrapper.critical(ex)
 
