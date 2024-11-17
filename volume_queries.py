@@ -376,10 +376,13 @@ def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url:
             processor=processor,
             active=active,
             info_url=info_url,
+            extra_url=extra_url,
             rss_url=rss_url,
             skip=skip,
             rating=rating,
-            tags=tags
+            tags=tags,
+            style=style,
+            start_chapter=start_chapter_id
         )
 
         # Add and commit the new book

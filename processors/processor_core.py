@@ -1,5 +1,6 @@
 import copy
 from abc import ABC, abstractmethod
+from typing import Optional
 
 from db import Book
 from thread_utils import TaskWrapper, NoOpTaskWrapper
@@ -21,6 +22,12 @@ class CustomDownloadInterface(ABC):
         if task_wrapper is None:
             task_wrapper = NoOpTaskWrapper()
         self.task_wrapper = task_wrapper
+
+    def get_name(self):
+        return self.processor_name
+
+    def get_id(self):
+        return self.processor_id
 
     @abstractmethod
     def list_chapters(self, definition: Book, headers=None):
@@ -67,6 +74,15 @@ class CustomDownloadInterface(ABC):
         :return:
         """
         return False
+
+    def is_active(self, definition: Book, headers=None) -> Optional[bool]:
+        """
+        Is this book still ongoing?
+        :param definition: The book row
+        :param headers: Browser headers, if available
+        :return: True/False/None.  None is Unknown.
+        """
+        return None
 
     def requires_starting_page(self):
         """
@@ -118,7 +134,7 @@ class CustomDownloadInterface(ABC):
         """
         return ''
 
-    def clone_to(self, task_wrapper: TaskWrapper):
+    def clone_to(self, task_wrapper: TaskWrapper) -> "CustomDownloadInterface":
         """
         This is used to make a copy of the processor, since it can get into a weird state being "shared"
         :param task_wrapper: The logger to assign

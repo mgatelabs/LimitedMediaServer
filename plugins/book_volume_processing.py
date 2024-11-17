@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 
 from flask_sqlalchemy.session import Session
 
@@ -7,6 +8,7 @@ from file_utils import delete_empty_folders
 from html_utils import download_unsecure_file, download_secure_file, get_headers, get_headers_when_empty
 from image_utils import clean_images_folder
 from plugins.book_update_stats import generate_db_for_folder
+from processors.processor_core import CustomDownloadInterface
 from text_utils import is_not_blank
 from thread_utils import TaskWrapper
 from utility import random_sleep
@@ -170,7 +172,7 @@ class VolumeProcessor:
 
         self.task_wrapper = task_wrapper
 
-    def processor_for_id(self, processor_id: str):
+    def processor_for_id(self, processor_id: str) -> Optional["CustomDownloadInterface"]:
         for processor in self.processors:
             if processor.processor_id == processor_id:
                 return processor
@@ -262,3 +264,47 @@ class VolumeProcessor:
             return False
 
         return is_not_blank(book.tags)
+
+    def ia_active(self, book: Book, token) -> Optional[bool]:
+
+        if token is not None and token.should_stop:
+            self.task_wrapper.error('Token is triggered, stopping')
+            return None
+
+        book_name: str = book.name
+        book_processor: str = book.processor
+
+        self.task_wrapper.always(f'Processing: {book_name}')
+
+        processor = self.processor_for_id(book_processor)
+
+        if processor is not None:
+            self.task_wrapper.trace(f'Using {processor.get_name()} Processor')
+
+            headers = None
+            if processor.headers_required(book):
+
+                site_url = ''
+                if is_not_blank(book.info_url):
+                    site_url = book.info_url
+                elif is_not_blank(book.extra_url):
+                    site_url = book.extra_url
+
+                headers = get_headers(site_url, True, self.task_wrapper, False)
+
+                if headers is None:
+                    self.task_wrapper.error('Unable to acquire Headers, stopping')
+                    return None
+
+            cloned = processor.clone_to(self.task_wrapper)
+
+            is_book_active = cloned.is_active(book, headers)
+
+            if is_book_active is not None and not is_book_active:
+                book.active = False
+                return False
+
+            return True
+        else:
+            self.task_wrapper.error(f'Processor: {book_processor} not found')
+            return None
