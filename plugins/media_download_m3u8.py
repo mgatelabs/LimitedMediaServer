@@ -11,7 +11,7 @@ from file_utils import create_random_folder, is_valid_url, temporary_folder
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
 from plugin_system import ActionMediaFolderPlugin, plugin_string_arg, plugin_url_arg, plugin_select_arg, \
-    plugin_select_values, plugin_filename_arg
+    plugin_select_values, plugin_filename_arg, PLUGIN_VALUES_Y_N
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 
@@ -52,6 +52,8 @@ class DownloadFromM3u8Task(ActionMediaFolderPlugin):
         result.append(
             plugin_filename_arg('Filename', 'filename', 'The name of the file.')
         )
+
+        #result.append(plugin_select_arg('Send Headers', 'headers', 'n', PLUGIN_VALUES_Y_N, 'Send headers with command?'))
 
         result.append(
             plugin_select_arg('Description', 'dest', 'primary',
@@ -122,10 +124,10 @@ class DownloadM3u8(TaskWrapper):
             arguments = ['-nostdin', '-i', self.url, '-c', 'copy', temp_file]
 
             # Run the program with the provided arguments
-            process = subprocess.Popen(['ffmpeg'] + arguments, cwd=temp_folder)
+            process = subprocess.Popen(['ffmpeg'] + arguments, cwd=temp_folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             # Wait for the process to finish
-            process.wait()
+            stdout, stderr = process.communicate()  # Capture the output and error streams
 
             return_code = str(process.returncode)
 
@@ -160,4 +162,8 @@ class DownloadM3u8(TaskWrapper):
 
             else:
                 self.error(f'Return Code {return_code}')
+
+                error_text = stderr.decode('utf-8')
+                self.error(error_text)
+
                 self.set_failure()

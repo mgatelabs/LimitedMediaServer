@@ -8,10 +8,11 @@ import eyed3
 from PIL import Image
 from flask_sqlalchemy.session import Session
 
+from db import MediaFile
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import get_ffmpeg_f_argument_from_mimetype, generate_video_thumbnail
 from image_utils import resize_image
-from media_queries import find_folder_by_id, find_missing_file_previews_in_folder, find_missing_file_previews, \
+from media_queries import find_missing_file_previews_in_folder, find_missing_file_previews, \
     find_files_in_folder
 from media_utils import get_data_for_mediafile, get_preview_for_mediafile, get_folder_by_user
 from number_utils import parse_boolean, is_integer
@@ -206,7 +207,8 @@ class MakeAllPreviewsTask(ActionMediaPlugin):
         """
         Create the task to generate previews for all folders.
         """
-        return PreviewFolder("Gen-Prev", 'All Folders', '*', self.primary_path, self.archive_path, True, False, args['place'])
+        return PreviewFolder("Gen-Prev", 'All Folders', '*', self.primary_path, self.archive_path, True, False,
+                             args['place'])
 
 
 class PreviewFolder(TaskWrapper):
@@ -275,7 +277,8 @@ class PreviewFolder(TaskWrapper):
                     self.trace(f'{source_path} > {preview_path}')
 
             try:
-                if generate_thumbnail(file.mime_type, str(source_path), str(preview_path), self, self.media_position):
+                if generate_thumbnail(file.mime_type, str(source_path), str(preview_path), self,
+                                      self.media_position):
                     file.preview = True
                     if count % 100 == 0:
                         self.set_worked()
@@ -291,7 +294,8 @@ class PreviewFolder(TaskWrapper):
             db_session.commit()
 
 
-def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper = None, percent: int = 10) -> bool:
+def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper = None,
+                       percent: int = 10) -> bool:
     """
     Generate a thumbnail for a media file.
 
@@ -322,16 +326,14 @@ def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper 
 
         video_format = get_ffmpeg_f_argument_from_mimetype(mime_type)
 
-        temp_file = input_file.replace(".dat", "_prev.png")
-
         try:
-            generate_video_thumbnail(input_file, video_format, temp_file, percent)
+            generate_video_thumbnail(input_file, video_format, output_file, percent)
 
             if tw.can_trace():
-                file_size = os.path.getsize(temp_file)
+                file_size = os.path.getsize(output_file)
                 tw.trace(f'Generated Image Size: {file_size}')
 
-            resize_image(temp_file, temp_file, 256)
+            resize_image(output_file, output_file, 256)
 
         except ValueError as ve:
             tw.error(str(ve))
