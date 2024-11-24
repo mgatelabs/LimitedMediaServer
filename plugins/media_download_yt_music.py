@@ -4,17 +4,18 @@ import os.path
 import shutil
 import subprocess
 from datetime import datetime
-import eyed3
 
+import eyed3
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
-from file_utils import create_random_folder
+from file_utils import temporary_folder
 from image_utils import crop_and_resize
 from media_queries import find_folder_by_id, insert_file
+from media_utils import get_data_for_mediafile
 from number_utils import parse_boolean
 from plugin_system import ActionMediaFolderPlugin, plugin_string_arg, plugin_select_arg, plugin_select_values
-from text_utils import is_not_blank, is_blank, common_prefix_postfix, extract_yt_code, remove_prefix_and_postfix, \
+from text_utils import is_blank, common_prefix_postfix, extract_yt_code, remove_prefix_and_postfix, \
     remove_start_digits_pattern
 from thread_utils import TaskWrapper
 
@@ -92,13 +93,15 @@ class DownloadMusicFromYtTask(ActionMediaFolderPlugin):
     def get_feature_flags(self):
         return MANAGE_MEDIA
 
-    def create_task(self, session: Session, args):
-        return DownloadYtMusic("DL YT Music", 'Downloading music from YT', args['folder_id'], args['url'], parse_boolean(args['split_chapters']),
+    def create_task(self, db_session: Session, args):
+        return DownloadYtMusic("DL YT Music", 'Downloading music from YT', args['folder_id'], args['url'],
+                               parse_boolean(args['split_chapters']),
                                args['dest'],
                                self.primary_path,
                                self.archive_path, self.temp_path)
 
-def extract_album_art(folder, mp3_file, overwite = False):
+
+def extract_album_art(folder, mp3_file, overwite=False):
     cover_file = os.path.join(folder, 'cover.jpg')
 
     if not os.path.exists(cover_file) or overwite:
@@ -110,6 +113,7 @@ def extract_album_art(folder, mp3_file, overwite = False):
             image_file.close()
 
     return cover_file
+
 
 def replace_album_art_d3(mp3_file_path, new_album_art_path, new_icon_art_path, log: TaskWrapper):
     audiofile = eyed3.load(mp3_file_path)
@@ -123,6 +127,7 @@ def replace_album_art_d3(mp3_file_path, new_album_art_path, new_icon_art_path, l
     audiofile.tag.save()
 
     log.debug(f"Album art replaced in '{mp3_file_path}'")
+
 
 class DownloadYtMusic(TaskWrapper):
     def __init__(self, name, description, folder_id, video, split_chapters: bool, dest, primary_path, archive_path,
@@ -149,11 +154,7 @@ class DownloadYtMusic(TaskWrapper):
 
         is_archive = self.dest == 'archive'
 
-        temp_folder = ''
-        try:
-            temp_folder = create_random_folder(self.temp_path)
-
-            self.info(f'Temp Folder: {temp_folder}')
+        with temporary_folder(self.temp_path, self) as temp_folder:
 
             arguments = []
             if self.split_chapters:
@@ -185,7 +186,7 @@ class DownloadYtMusic(TaskWrapper):
                 if self.split_chapters:
 
                     for possible_filename in possible_filenames:
-                        self.info('T:' + possible_filename)
+                        self.debug('T:' + possible_filename)
                         video_value = extract_yt_code(possible_filename)
                         if video_value not in by_video_lookup:
                             by_video_lookup[video_value] = []
@@ -197,9 +198,9 @@ class DownloadYtMusic(TaskWrapper):
                 for video_key, sample_list in by_video_lookup.items():
 
                     if self.split_chapters:
-                        self.info('Find Prefix')
+                        self.debug('Find Prefix')
                         front_prefix, end_postfix = common_prefix_postfix(sample_list)
-                        self.info(f'{front_prefix} {end_postfix}')
+                        self.debug(f'{front_prefix} {end_postfix}')
 
                     has_cover = False
                     album_file = ''
@@ -207,7 +208,7 @@ class DownloadYtMusic(TaskWrapper):
 
                     for item in sample_list:
 
-                        self.info('SL:' + item)
+                        self.debug('SL:' + item)
 
                         # Get the full path
                         item_full_path = os.path.join(temp_folder, item)
@@ -238,26 +239,24 @@ class DownloadYtMusic(TaskWrapper):
                                 modified_name = str(item)
 
                                 if self.split_chapters and front_prefix is not None and end_postfix is not None:
-                                    self.info('BE')
+                                    self.debug('BE')
                                     video_value = extract_yt_code(modified_name)
-                                    self.info('A:' + modified_name)
+                                    self.debug('A:' + modified_name)
                                     modified_name = remove_prefix_and_postfix(modified_name, front_prefix,
                                                                               end_postfix)
-                                    self.info('B:' + modified_name)
+                                    self.debug('B:' + modified_name)
                                     # Skip the non-chapter files
                                     if modified_name == '[' + video_value + '].mp3':
                                         continue
-                                    modified_name = remove_start_digits_pattern(modified_name + '[' + video_value + '].mp3')
+                                    modified_name = remove_start_digits_pattern(
+                                        modified_name + '[' + video_value + '].mp3')
 
                                 replace_album_art_d3(item_full_path, album_file, icon_file, self)
 
                                 new_file = insert_file(source_row.id, modified_name, mime_type, is_archive, False,
                                                        file_size, created_datetime, db_session)
 
-                                if is_archive:
-                                    dest_path = os.path.join(self.archive_path, new_file.id + '.dat')
-                                else:
-                                    dest_path = os.path.join(self.primary_path, new_file.id + '.dat')
+                                dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
 
                                 shutil.move(str(item_full_path), str(dest_path))
 
@@ -266,7 +265,3 @@ class DownloadYtMusic(TaskWrapper):
             else:
                 self.error(f'Return Code {return_code}')
                 self.set_failure()
-
-        finally:
-            if is_not_blank(temp_folder) and os.path.exists(temp_folder):
-                shutil.rmtree(temp_folder)

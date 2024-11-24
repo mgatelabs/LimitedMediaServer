@@ -6,6 +6,7 @@ from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
 from media_queries import find_folder_by_id, insert_file
+from media_utils import get_data_for_mediafile
 from plugin_system import ActionMediaFolderPlugin
 from text_utils import is_blank, clean_string
 from thread_utils import TaskWrapper
@@ -86,7 +87,7 @@ class ConsumeFolderTask(ActionMediaFolderPlugin):
     def get_feature_flags(self):
         return MANAGE_MEDIA
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         folder = args['folder']
         return ConsumeFolder("Import Folder", f'Import content from: {folder}', args['folder_id'], args['folder'], args['dest'],
                              self.primary_path, self.archive_path)
@@ -103,7 +104,7 @@ class ConsumeFolder(TaskWrapper):
 
     def run(self, db_session):
 
-        if is_blank(self.primary_path):
+        if is_blank(self.primary_path) or is_blank(self.archive_path):
             self.critical('This feature is not ready.  Please configure the app properties and restart the server.')
 
         existing_row = find_folder_by_id(self.folder_id, db_session)
@@ -142,12 +143,7 @@ class ConsumeFolder(TaskWrapper):
                     self.set_failure()
                     return
 
-                # Move file to destination folder
-
-                if is_archive:
-                    dest_path = os.path.join(self.archive_path, new_file.id + '.dat')
-                else:
-                    dest_path = os.path.join(self.primary_path, new_file.id + '.dat')
+                dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
 
                 if self.can_trace():
                     self.trace(f'Dest File: {dest_path}')

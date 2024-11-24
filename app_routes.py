@@ -228,8 +228,8 @@ def delete_user(user_details):
 
 
 @admin_blueprint.route('/remove/group', methods=['POST'])
-@feature_required(admin_blueprint, MANAGE_APP)
-def delete_group(user_details):
+@feature_required_silent(admin_blueprint, MANAGE_APP)
+def delete_group():
     """
     Delete a group by group_id. The current user cannot delete themselves.
     """

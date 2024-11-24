@@ -3,18 +3,18 @@ import io
 import logging
 import os
 import os.path
-from logging import exception
 
 import eyed3
 from PIL import Image
 from flask_sqlalchemy.session import Session
-from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from feature_flags import MANAGE_MEDIA
+from ffmpeg_utils import get_ffmpeg_f_argument_from_mimetype, generate_video_thumbnail
 from image_utils import resize_image
 from media_queries import find_folder_by_id, find_missing_file_previews_in_folder, find_missing_file_previews, \
     find_files_in_folder
-from number_utils import parse_boolean
+from media_utils import get_data_for_mediafile, get_preview_for_mediafile, get_folder_by_user
+from number_utils import parse_boolean, is_integer
 from plugin_system import ActionMediaFolderPlugin, ActionMediaPlugin, plugin_select_values, plugin_select_arg
 from text_utils import is_blank
 from thread_utils import TaskWrapper
@@ -76,6 +76,13 @@ class MakePreviewsTask(ActionMediaFolderPlugin):
                               'Force it to overwrite?')
         )
 
+        result.append(
+            plugin_select_arg('Place', 'place', '45',
+                              plugin_select_values('10%', '10', '20%', '20', '30%', '30', '40%', '40', '45%', '45',
+                                                   '50%', '50',
+                                                   '60%', '60', '70%', '70', '80%', '80', '90%', '90'),
+                              'Position to take frame from'))
+
         return result
 
     def process_action_args(self, args):
@@ -89,6 +96,11 @@ class MakePreviewsTask(ActionMediaFolderPlugin):
         elif not (args['force'] == 'false' or args['force'] == 'true'):
             results.append('force incorrect value')
 
+        if 'place' in args and is_integer(args['place']):
+            args['place'] = int(args['place'])
+        else:
+            results.append('place argument is required')
+
         if len(results) > 0:
             return results
 
@@ -100,13 +112,13 @@ class MakePreviewsTask(ActionMediaFolderPlugin):
         """
         return MANAGE_MEDIA
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         """
         Create the task to generate previews for a folder.
         """
         folder_id = args['folder_id']
         return PreviewFolder("Gen-Prev", f'Generate previews for: {folder_id}', folder_id, self.primary_path,
-                             self.archive_path, False, parse_boolean(args['force']))
+                             self.archive_path, False, parse_boolean(args['force']), args['place'])
 
 
 class MakeAllPreviewsTask(ActionMediaPlugin):
@@ -158,12 +170,30 @@ class MakeAllPreviewsTask(ActionMediaPlugin):
         Get the arguments for the action.
         """
         result = super().get_action_args()
+
+        result.append(
+            plugin_select_arg('Place', 'place', '10',
+                              plugin_select_values('10%', '10', '20%', '20', '30%', '30', '40%', '40', '45%', '45',
+                                                   '50%', '50',
+                                                   '60%', '60', '70%', '70', '80%', '80', '90%', '90'),
+                              'Position to take frame from'))
+
         return result
 
     def process_action_args(self, args):
         """
         Process the action arguments.
         """
+        results = []
+
+        if 'place' in args and is_integer(args['place']):
+            args['place'] = int(args['place'])
+        else:
+            results.append('place argument is required')
+
+        if len(results) > 0:
+            return results
+
         return None
 
     def get_feature_flags(self):
@@ -172,11 +202,11 @@ class MakeAllPreviewsTask(ActionMediaPlugin):
         """
         return MANAGE_MEDIA
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         """
         Create the task to generate previews for all folders.
         """
-        return PreviewFolder("Gen-Prev", 'All Folders', '*', self.primary_path, self.archive_path, True)
+        return PreviewFolder("Gen-Prev", 'All Folders', '*', self.primary_path, self.archive_path, True, False, args['place'])
 
 
 class PreviewFolder(TaskWrapper):
@@ -205,10 +235,14 @@ class PreviewFolder(TaskWrapper):
         if self.all_folders:
             files = find_missing_file_previews(db_session)
         else:
-            existing_row = find_folder_by_id(self.folder_id, db_session)
 
-            if existing_row is None:
-                self.critical('Folder not found in DB')
+            try:
+                # Make sure we have access
+                self.trace('Checking for User access to Folder')
+                existing_row = get_folder_by_user(self.folder_id, self.user, db_session)
+            except ValueError as ve:
+                logging.exception(ve)
+                self.error(str(ve))
                 self.set_failure()
                 return
 
@@ -228,16 +262,14 @@ class PreviewFolder(TaskWrapper):
             self.update_progress((count / total) * 100.0)
             count = count + 1
 
-            if file.archive:
-                source_path = os.path.join(self.archived_path, file.id + '.dat')
-            else:
-                source_path = os.path.join(self.primary_path, file.id + '.dat')
+            source_path = get_data_for_mediafile(file, self.primary_path, self.archived_path)
 
-            preview_path = os.path.join(self.primary_path, file.id + '_prev.png')
+            preview_path = get_preview_for_mediafile(file, self.primary_path)
 
             if not self.all_folders:
                 # For all folders, we don't need to log this, since the user may not have access to a folder
-                self.info(f'Making thumbnail for {file.filename}')
+                if self.can_debug():
+                    self.debug(f'Making thumbnail for {file.filename}')
 
                 if self.can_trace():
                     self.trace(f'{source_path} > {preview_path}')
@@ -253,7 +285,6 @@ class PreviewFolder(TaskWrapper):
             except Exception as e:
                 logging.exception(e)
                 self.set_failure()
-
 
         if len(files) > 0:
             self.set_worked()
@@ -285,36 +316,34 @@ def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper 
     if tw is not None:
         tw.trace(f'Mime {mime_type}')
 
-    if mime_type == 'video/mp4':  # Video file
+    if mime_type.startswith('video/'):  # Video file
         if tw is not None:
-            tw.trace('Starting MP4')
+            tw.trace('Starting Video Thumbnail')
 
-        temp_file = input_file.replace(".dat", ".mp4")
+        video_format = get_ffmpeg_f_argument_from_mimetype(mime_type)
+
+        temp_file = input_file.replace(".dat", "_prev.png")
+
         try:
-            if os.path.exists(temp_file) and os.path.isfile(temp_file):
-                if tw is not None:
-                    tw.warn(f'Found file that had been messed up {temp_file}')
-                pass
-            else:
-                # Rename file to .mp4
-                os.rename(input_file, temp_file)
+            generate_video_thumbnail(input_file, video_format, temp_file, percent)
 
-            clip = VideoFileClip(temp_file)
-            duration = clip.duration
-            thumbnail_time = duration * (percent / 100.0)  # 10% playback position
-            frame = clip.get_frame(thumbnail_time)
-            resized_frame = Image.fromarray(frame)
-            resized_frame.thumbnail((256, 256))
-            resized_frame.save(output_file)
-            clip.close()
+            if tw.can_trace():
+                file_size = os.path.getsize(temp_file)
+                tw.trace(f'Generated Image Size: {file_size}')
 
+            resize_image(temp_file, temp_file, 256)
+
+        except ValueError as ve:
+            tw.error(str(ve))
+            tw.set_failure()
+            logging.exception(ve)
+            return False
         finally:
-            os.rename(temp_file, input_file)
+            pass
+            # os.rename(temp_file, input_file)
 
         if tw is not None:
             tw.set_worked()
-
-
 
         return True
 

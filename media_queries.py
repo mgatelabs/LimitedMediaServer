@@ -2,9 +2,9 @@ from datetime import datetime
 from typing import Optional, List, Tuple
 
 from flask_sqlalchemy.session import Session
+from sqlalchemy import and_
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import joinedload
-from sqlalchemy import and_
 
 from db import MediaFolder, MediaFile, db, MediaFileProgress
 from text_utils import is_not_blank
@@ -331,6 +331,26 @@ def find_file_by_id(file_id: str, db_session: Session = None) -> Optional[MediaF
         return MediaFile.query.filter_by(id=file_id).first()
 
 
+# Find File by Name in folder
+def find_file_by_filename(file_name: str, folder_id: str, db_session: Session = None) -> Optional[MediaFile]:
+    """
+    Find a media file by its name in a given folder.
+
+    Args:
+        file_name (str): The name the file to find.
+        folder_id (str): The folder to look in.
+        db_session (Session, optional): The database session to use. Defaults to None.
+
+    Returns:
+        Optional[MediaFile]: The found MediaFile object or None if not found.
+    """
+    if db_session is not None:
+        return db_session.query(MediaFile).filter(MediaFile.filename == file_name).filter(
+            MediaFile.folder_id == folder_id).first()
+    else:
+        return MediaFile.query.filter(MediaFile.filename == file_name).filter(MediaFile.folder_id == folder_id).first()
+
+
 def _build_files_in_folders_query(folder_id: str, filter_text: str = None, db_session: Session = None):
     if db_session is not None:
         query_builder = db_session.query(MediaFile)
@@ -353,14 +373,14 @@ def find_files_in_folder(folder_id: str, filter_text: str = None, query_offset: 
     Find all files in a specific folder.
 
     Args:
-        folder_id (str): The ID of the folder to search in.
-        filter_text (str, optional): Text that will be searched for. Defaults to None.
-        query_offset (int, optional): The number of rows to skip. Defaults to 0.
-        query_limit (int): The maximum number of rows to return. Defaults to unlimited.
-        sort_column:
-        sort_descending:
-        db_session (Session, optional): The database session to use. Defaults to None.
-        :param uid:
+        :param folder_id (str): The ID of the folder to search in.
+        :param filter_text (str, optional): Text that will be searched for. Defaults to None.
+        :param query_offset (int, optional): The number of rows to skip. Defaults to 0.
+        :param query_limit (int): The maximum number of rows to return. Defaults to unlimited.
+        :param sort_column:
+        :param sort_descending:
+        :param db_session (Session, optional): The database session to use. Defaults to None.
+        :param uid: User identify
 
     Returns:
         Optional[List[MediaFile]]: A list of MediaFile objects in the folder or None if not found.
@@ -369,7 +389,9 @@ def find_files_in_folder(folder_id: str, filter_text: str = None, query_offset: 
     query = _build_files_in_folders_query(folder_id, filter_text, db_session)
 
     if uid is not None:
-        query = query.outerjoin(MediaFileProgress, and_(MediaFile.id == MediaFileProgress.file_id, MediaFileProgress.user_id == uid)).options(joinedload(MediaFile.progress_records))
+        query = query.outerjoin(MediaFileProgress, and_(MediaFile.id == MediaFileProgress.file_id,
+                                                        MediaFileProgress.user_id == uid)).options(
+            joinedload(MediaFile.progress_records))
 
     if sort_descending:
         query = query.order_by(sort_column.desc(), MediaFile.id.desc())
@@ -496,10 +518,11 @@ def find_progress_entry(user_id: int, file_id: str) -> Optional[MediaFileProgres
     :param file_id:
     :return:
     """
-    return MediaFileProgress.query.filter_by(user_id=user_id, file_id=file_id).first()# Progress
+    return MediaFileProgress.query.filter_by(user_id=user_id, file_id=file_id).first()  # Progress
 
 
-def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Session = db.session) -> Optional[List[Tuple[MediaFileProgress, str]]]:
+def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Session = db.session) -> Optional[
+    List[Tuple[MediaFileProgress, str]]]:
     """
     Try to find entries for a media file with the associated folder name.
     :param user_id: ID of the user.

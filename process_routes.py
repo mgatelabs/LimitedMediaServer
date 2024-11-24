@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, current_app
 from sqlalchemy.orm import sessionmaker
 
-from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username
+from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username, get_uid
 from common_utils import generate_failure_response, generate_success_response
 from db import db
 from feature_flags import MANAGE_PROCESSES, VIEW_PROCESSES, MANAGE_APP
@@ -38,6 +38,9 @@ def execute_task(task_wrapper: TaskWrapper, app):
             task_wrapper.trace('Before Local Session')
             task_wrapper.mark_start()
             task_wrapper.always('Executing')
+            username = get_username(task_wrapper.user)
+            uid = get_uid(task_wrapper.user)
+            task_wrapper.info(f'Executed by {username} ({uid})')
             task_wrapper.set_waiting(False)
             task_wrapper.run(session)
             task_wrapper.set_finished(True)
@@ -105,16 +108,27 @@ def add_plugin_task(user_details):
                     if task_wrapper is not None:
 
                         if isinstance(task_wrapper, Iterable):
+                            skip_count = 0
+                            add_count = 0
                             for task in task_wrapper:
-                                task.update_logging_level(logging_level)
-                                # Execute the task asynchronously
-                                future = executor.submit(task_content, task, app)
-                                task.future = future
-                                task_manager.add_task(task)
+                                if task_manager.has_task(task.name, task.description):
+                                    skip_count = skip_count + 1
+                                else:
+                                    add_count = add_count + 1
+                                    task.update_user(user_details)
+                                    task.update_logging_level(logging_level)
+                                    # Execute the task asynchronously
+                                    future = executor.submit(task_content, task, app)
+                                    task.future = future
+                                    task_manager.add_task(task)
 
-                            return generate_success_response('Tasks added successfully')
+                            return generate_success_response(f'Tasks Added: ({add_count}), Skipped: ({skip_count})')
                         else:
+                            if task_manager.has_task(task_wrapper.name, task_wrapper.description):
+                                return generate_failure_response('Error: Task is already in the Queue')
+
                             # Execute the task asynchronously
+                            task_wrapper.update_user(user_details)
                             task_wrapper.update_logging_level(logging_level)
                             future = executor.submit(task_content, task_wrapper, app)
                             task_wrapper.future = future

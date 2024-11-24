@@ -17,6 +17,7 @@ from constants import PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_SECRET_KEY, PROP
 from db import init_db, db
 from health_routes import health_blueprint
 from media_routes import media_blueprint
+from network_utils import is_private_ip, get_local_ip
 from plugin_routes import plugin_blueprint
 from plugin_utils import get_plugins
 from process_routes import process_blueprint
@@ -175,6 +176,16 @@ if __name__ == '__main__':
 
     # Run the app with or without SSL
     ssl_context = (args.ssl_cert, args.ssl_key) if use_ssl else None
+
+    local_ip = app.config[PROPERTY_SERVER_HOST_KEY]
+
+    if local_ip == '0.0.0.0':
+        actual_ip = get_local_ip()
+        if actual_ip is not None and not is_private_ip(actual_ip):
+            print('Error: IP Address is not a local address, do not expose this server to the Internet!!!!')
+    else:
+        if not is_private_ip(local_ip):
+            print('Error: IP Address is not a local address, do not expose this server to the Internet!!!!')
 
     app.run(host=app.config[PROPERTY_SERVER_HOST_KEY], port=app.config[PROPERTY_SERVER_PORT_KEY], debug=False,
             ssl_context=ssl_context)

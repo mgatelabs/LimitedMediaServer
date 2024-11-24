@@ -5,8 +5,11 @@ import random
 import string
 from datetime import datetime
 from urllib.parse import urlparse
+import tempfile
+import shutil
 
-from thread_utils import TaskWrapper
+from thread_utils import TaskWrapper, NoOpTaskWrapper
+from contextlib import contextmanager
 
 
 def delete_empty_folders(folder_path, logger: TaskWrapper = None):
@@ -104,3 +107,24 @@ def is_valid_mime_type(mime_type):
 def is_valid_url(url):
     parsed = urlparse(url)
     return all([parsed.scheme, parsed.netloc])
+
+@contextmanager
+def temporary_folder(base_folder=None, task_wrapper: TaskWrapper = NoOpTaskWrapper()):
+    """
+    Context manager to create a temporary folder, provide it to the block,
+    and clean it up afterward.
+
+    :param base_folder: Optional base folder where the temporary folder will be created.
+    :param task_wrapper: Optional Logger
+    :yield: Path to the temporary folder.
+    """
+    temp_folder = tempfile.mkdtemp(dir=base_folder)
+    try:
+        if task_wrapper.can_trace():
+            task_wrapper.trace(f'Enter Temp Folder: {temp_folder}')
+        yield temp_folder
+    finally:
+        # Clean up the temporary folder
+        shutil.rmtree(temp_folder, ignore_errors=True)
+        if task_wrapper.can_trace():
+            task_wrapper.trace(f'Exit Temp Folder: {temp_folder}')

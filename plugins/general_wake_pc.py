@@ -50,7 +50,7 @@ class WakeUpPcTask(ActionPlugin):
             self.mac = config[PROPERTY_PLUGIN_MAC_ADDRESS]
 
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         return WakePc("WakePC", f'Wake up PC w/ MAC address {self.mac}', self.mac)
 
     def get_feature_flags(self):

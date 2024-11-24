@@ -18,6 +18,16 @@ def plugin_string_arg(arg_name: str, arg_id: str, arg_description: str = ''):
         "values": []
     }
 
+# Function to create a filename argument for a plugin
+def plugin_filename_arg(arg_name: str, arg_id: str, arg_description: str = ''):
+    return {
+        "name": arg_name,
+        "id": arg_id,
+        "type": "filename",
+        "description": arg_description,
+        "values": []
+    }
+
 # Function to create a long string argument for a plugin
 def plugin_long_string_arg(arg_name: str, arg_id: str, arg_description: str = ''):
     return {
@@ -151,7 +161,7 @@ class ActionPlugin:
     def process_action_args(self, args):
         raise NotImplementedError
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         raise NotImplementedError
 
     def absorb_config(self, config):

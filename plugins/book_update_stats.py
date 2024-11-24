@@ -65,7 +65,7 @@ class UpdateAllCaches(ActionPlugin):
         super().absorb_config(config)
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         return UpdateAllJson("Update", 'All Volume Definitions', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
@@ -126,7 +126,7 @@ class UpdateSingleCache(ActionBookPlugin):
         super().absorb_config(config)
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         series_id = args['series_id']
         return UpdateSingleJson("Update", f'Update {series_id} Definition', series_id,
                                 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)

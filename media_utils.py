@@ -1,8 +1,15 @@
+import logging
 import os
+from typing import Optional
+
+from flask_sqlalchemy.session import Session
+from webvtt import WebVTT
 
 from auth_utils import get_user_features, get_user_group_id, get_user_media_limit
-from db import MediaFile, MediaFolder
+from db import MediaFile, MediaFolder, db
 from feature_flags import MANAGE_APP
+from media_queries import find_folder_by_id, find_file_by_id
+from text_utils import is_guid
 
 
 def clean_files_for_mediafile(file: MediaFile, primary_path: str, archive_path: str):
@@ -147,3 +154,102 @@ def get_folder_rating_checker(user_details):
 
 def user_can_see_rating(user_details, rating: int) -> bool:
     return rating <= get_user_media_limit(user_details)
+
+
+def get_filename_with_extension(video_filename, file_ending: str):
+    """Return the SRT filename for a given video filename."""
+    base_name, _ = os.path.splitext(video_filename)
+    return f"{base_name}.{file_ending}"
+
+
+def convert_vtt_to_srt(vtt_file, srt_file):
+    try:
+        """Convert a VTT file to SRT format."""
+        vtt = WebVTT.read(vtt_file)
+        with open(srt_file, 'w', encoding='utf-8') as f:
+            for i, caption in enumerate(vtt):
+                f.write(f"{i + 1}\n")
+                f.write(f"{caption.start} --> {caption.end}\n")
+                f.write(f"{caption.text}\n\n")
+        return True
+    except Exception as e:
+        logging.exception(e)
+        return False
+
+def get_file_by_user(file_id: str, user_details, db_session: Session = db.session) -> Optional[tuple[MediaFile, MediaFolder]]:
+
+    if not is_guid(file_id):
+        raise ValueError('file_id is not a valid GUID')
+
+    file = find_file_by_id(file_id, db_session)
+
+    if file is None:
+        raise ValueError('Could not find file')
+
+    folder = file.mediafolder
+
+    if folder is None:
+        raise ValueError('Could not find folder')
+
+    folder_rating_checker = get_folder_rating_checker(user_details)
+    folder_group_checker = get_folder_group_checker(user_details)
+
+    # Make sure they can see it
+    if not folder_rating_checker(folder):
+        raise ValueError('User does not have access to folder via Rating Limit')
+
+    if not folder_group_checker(folder):
+        raise ValueError('User does not have access to folder via Security Group')
+
+    return file, folder
+
+def get_folder_by_user(folder_id: str, user_details, db_session: Session = db.session) -> Optional[MediaFolder]:
+
+    if not is_guid(folder_id):
+        raise ValueError('file_id is not a valid GUID')
+
+    folder = find_folder_by_id(folder_id, db_session)
+
+    if folder is None:
+        raise ValueError('Could not find folder')
+
+    folder_rating_checker = get_folder_rating_checker(user_details)
+    folder_group_checker = get_folder_group_checker(user_details)
+
+    # Make sure they can see it
+    if not folder_rating_checker(folder):
+        raise ValueError('User does not have access to folder via Rating Limit')
+
+    if not folder_group_checker(folder):
+        raise ValueError('User does not have access to folder via Security Group')
+
+    return folder
+
+
+def describe_file_size_change(old_size, new_size):
+    """
+    Describes the change in file size between two values in a human-readable format.
+
+    :param old_size: Original file size in bytes.
+    :param new_size: New file size in bytes.
+    :return: A string describing the change in size.
+    """
+    def format_size(size):
+        # Helper function to format bytes into a human-readable size
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size < 1024:
+                return f"{size:.2f} {unit}"
+            size /= 1024
+        return f"{size:.2f} PB"
+
+    change = new_size - old_size
+    percentage_change = (change / old_size) * 100 if old_size != 0 else float('inf')
+    old_size_str = format_size(old_size)
+    new_size_str = format_size(new_size)
+
+    if change > 0:
+        return f"The file increased in size by {percentage_change:.2f}% ({old_size_str} to {new_size_str})."
+    elif change < 0:
+        return f"The file decreased in size by {abs(percentage_change):.2f}% ({old_size_str} to {new_size_str})."
+    else:
+        return f"The file size did not change ({old_size_str})."

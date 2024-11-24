@@ -1,5 +1,7 @@
 import importlib
+import json
 import os
+import re
 
 from processors.processor_core import CustomDownloadInterface
 
@@ -49,3 +51,33 @@ def get_volume_max_rating(user_details):
     if 'limits' in user_details and 'volume' in user_details['limits']:
         max_rating = user_details['limits']['volume']
     return max_rating
+
+
+def parse_curl_headers(curl_command):
+    headers = {}
+    # Replace newline characters with a space
+
+    list_of_strings = [line.strip().rstrip('\\') for line in curl_command.split('\n')]
+
+    header_pattern = r'^-H [\'"](.*?)[\'"]$'
+
+    for line in list_of_strings:
+        line = line.strip()
+
+        # Extract headers using regular expression
+        matches = re.findall(header_pattern, line)
+        for match in matches:
+            key_value = match.split(':', 1)  # Split at the first colon to handle multiple colons in header value
+            if len(key_value) == 2:
+                key, value = key_value
+                key = key.strip()
+                if 'authority' != key:  # This is specific to the site, so skip it
+                    value = value.strip()
+                    headers[key] = value
+
+    return headers
+
+
+def save_headers_to_json(headers, filename='headers.json'):
+    with open(filename, 'w') as json_file:
+        json.dump(headers, json_file, indent=4)

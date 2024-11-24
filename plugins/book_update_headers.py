@@ -1,12 +1,11 @@
 import argparse
-import json
-import re
 
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_APP
 from plugin_system import ActionPlugin, plugin_long_string_arg
 from thread_utils import TaskWrapper
+from volume_utils import parse_curl_headers, save_headers_to_json
 
 
 class UpdateHeaders(ActionPlugin):
@@ -61,41 +60,11 @@ class UpdateHeaders(ActionPlugin):
     def get_category(self):
         return 'book'
 
-    def create_task(self, session: Session, args):
-        return CreateUpdateHeader(args['headers'])
+    def create_task(self, db_session: Session, args):
+        return UpdateVolumeHeader(args['headers'])
 
 
-def parse_curl_headers(curl_command):
-    headers = {}
-    # Replace newline characters with a space
-
-    list_of_strings = [line.strip().rstrip('\\') for line in curl_command.split('\n')]
-
-    header_pattern = r'^-H [\'"](.*?)[\'"]$'
-
-    for line in list_of_strings:
-        line = line.strip()
-
-        # Extract headers using regular expression
-        matches = re.findall(header_pattern, line)
-        for match in matches:
-            key_value = match.split(':', 1)  # Split at the first colon to handle multiple colons in header value
-            if len(key_value) == 2:
-                key, value = key_value
-                key = key.strip()
-                if 'authority' != key:  # This is specific to the site, so skip it
-                    value = value.strip()
-                    headers[key] = value
-
-    return headers
-
-
-def save_headers_to_json(headers, filename='headers.json'):
-    with open(filename, 'w') as json_file:
-        json.dump(headers, json_file, indent=4)
-
-
-class CreateUpdateHeader(TaskWrapper):
+class UpdateVolumeHeader(TaskWrapper):
     def __init__(self, headers):
         super().__init__('Headers', 'Update headers.json file')
         self.headers = headers

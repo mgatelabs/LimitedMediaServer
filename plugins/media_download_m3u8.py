@@ -7,10 +7,11 @@ from datetime import datetime
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
-from file_utils import create_random_folder, is_valid_url
+from file_utils import create_random_folder, is_valid_url, temporary_folder
 from media_queries import find_folder_by_id, insert_file
+from media_utils import get_data_for_mediafile
 from plugin_system import ActionMediaFolderPlugin, plugin_string_arg, plugin_url_arg, plugin_select_arg, \
-    plugin_select_values
+    plugin_select_values, plugin_filename_arg
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 
@@ -49,7 +50,7 @@ class DownloadFromM3u8Task(ActionMediaFolderPlugin):
         )
 
         result.append(
-            plugin_string_arg('Filename', 'filename', 'The name of the file.')
+            plugin_filename_arg('Filename', 'filename', 'The name of the file.')
         )
 
         result.append(
@@ -83,7 +84,7 @@ class DownloadFromM3u8Task(ActionMediaFolderPlugin):
     def get_feature_flags(self):
         return MANAGE_MEDIA
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         filename = args['filename']
         return DownloadM3u8("Download M3u8", f'Downloading {filename} from M3u8 source', args['folder_id'], filename, args['url'],
                             args['dest'], self.primary_path,
@@ -114,11 +115,7 @@ class DownloadM3u8(TaskWrapper):
 
         is_archive = self.dest == 'archive'
 
-        temp_folder = ''
-        try:
-            temp_folder = create_random_folder(self.temp_path)
-
-            self.info(f'Temp Folder: {temp_folder}')
+        with temporary_folder(self.temp_path, self) as temp_folder:
 
             temp_file = os.path.join(temp_folder, 'download.mp4')
 
@@ -151,10 +148,7 @@ class DownloadM3u8(TaskWrapper):
                         new_file = insert_file(source_row.id, self.filename, mime_type, is_archive, False, file_size,
                                                created_datetime, db_session)
 
-                        if is_archive:
-                            dest_path = os.path.join(self.archive_path, new_file.id + '.dat')
-                        else:
-                            dest_path = os.path.join(self.primary_path, new_file.id + '.dat')
+                        dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
 
                         shutil.move(str(temp_file), str(dest_path))
                     else:
@@ -167,7 +161,3 @@ class DownloadM3u8(TaskWrapper):
             else:
                 self.error(f'Return Code {return_code}')
                 self.set_failure()
-
-        finally:
-            if is_not_blank(temp_folder) and os.path.exists(temp_folder):
-                shutil.rmtree(temp_folder)

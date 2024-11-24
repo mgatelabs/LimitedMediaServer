@@ -46,7 +46,7 @@ class TestTask(ActionPlugin):
         pass
 
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         return Test("Test", 'Test Process')
 
     def get_feature_flags(self):

@@ -205,7 +205,8 @@ class VolumeProcessor:
                 self.task_wrapper.info('Skipping Processor: ' + book_type)
             else:
                 self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
-                book_result = _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper, self.book_folder,
+                book_result = _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper,
+                                                self.book_folder,
                                                 clean_all)
         else:
             self.task_wrapper.critical('Unknown Processor: ' + book_type)
@@ -222,26 +223,26 @@ class VolumeProcessor:
             generate_db_for_folder(session, book_id, item_path, self.task_wrapper)
         return book_result
 
-    def get_tags(self, book, token):
+    def get_tags(self, book: Book, token) -> Optional[bool]:
 
         if token is not None and token.should_stop:
             self.task_wrapper.error('Token is triggered, stopping')
             return False
 
-        if 'tags' in book:
-            if not is_not_blank(book.tags):
-                self.task_wrapper.info('Skipping Tags, tags already exist')
-                return False
+        if is_not_blank(book.tags):
+            self.task_wrapper.info('Skipping Tags, tags already exist')
+            self.task_wrapper.set_worked()
+            return False
 
-        book_name: str = book.get("name")
-        book_type: str = book.get("type")
+        book_name: str = book.name
+        book_processor: str = book.processor
 
         self.task_wrapper.always('Processing: ' + book_name)
 
-        processor = self.processor_for_id(book_type)
+        processor = self.processor_for_id(book_processor)
 
         if processor is not None:
-            self.task_wrapper.trace('Using ' + processor.processor_name + " Processor")
+            self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
 
             headers = None
             if processor.headers_required(book):
@@ -258,9 +259,12 @@ class VolumeProcessor:
                     self.task_wrapper.error('Unable to get Headers, stopping')
                     return False
 
-            book.tags = ','.join(processor.clone_to(self.task_wrapper).get_tags(book, headers))
+            results = processor.clone_to(self.task_wrapper).get_tags(book, headers)
+
+            if results is not None:
+                book.tags = ','.join(results)
         else:
-            self.task_wrapper.add_log('Unknown Processor: ' + book_type)
+            self.task_wrapper.add_log('Unknown Processor: ' + book_processor)
             return False
 
         return is_not_blank(book.tags)

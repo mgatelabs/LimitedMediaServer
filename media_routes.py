@@ -647,11 +647,22 @@ def migrate_media_file(user_details: dict) -> tuple:
     folder_rating_checks = get_folder_rating_checker(user_details)
 
     file_id = clean_string(request.form.get('file_id'))
+    force_archive = clean_string(request.form.get('force_archive'))
+
+    if is_blank(force_archive):
+        force_archive = False
+    elif is_boolean(force_archive):
+        force_archive = parse_boolean(force_archive)
+    else:
+        force_archive = False
 
     file_row = find_file_by_id(file_id)
 
     if file_row is None:
         return generate_failure_response('Could not find requested file')
+
+    if force_archive and file_row.archive:
+        return generate_failure_response('File is already archived')
 
     folder_row = file_row.mediafolder
 

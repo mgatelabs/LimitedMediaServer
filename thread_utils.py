@@ -39,6 +39,20 @@ class TaskManager:
         with self.lock:
             self.task_list.append(task_wrapper)
 
+    def has_task(self, task_name: str, task_description: str) ->bool:
+        """
+        Check if there is an item in the QUEUE that already matches and isn't complete
+        :param task_name:
+        :param task_description:
+        :return: True if the task exists and isn't finished
+        """
+        with self.lock:
+            for task in self.task_list:
+                if task.name == task_name and task.description == task_description and not task.is_finished:
+                    return True
+        return False
+
+
     def get_all_tasks(self):
         """
         Get all tasks in the task list.
@@ -120,6 +134,7 @@ class TaskWrapper(ABC):
         self.init_time = datetime.now(timezone.utc)
         self.start_time = None
         self.end_time = None
+        self.user = None
 
     def mark_start(self):
         self.start_time = datetime.now(timezone.utc)
@@ -177,6 +192,9 @@ class TaskWrapper(ABC):
         """
         if logging_level % 10 == 0 and 0 <= logging_level <= 50:
             self.logging_level = logging_level
+
+    def update_user(self, user):
+        self.user = user
 
     def update_progress(self, value: float):
         """

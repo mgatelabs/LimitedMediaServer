@@ -8,8 +8,9 @@ from datetime import datetime
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
-from file_utils import create_random_folder
+from file_utils import create_random_folder, temporary_folder
 from media_queries import find_folder_by_id, insert_file
+from media_utils import get_data_for_mediafile
 from plugin_system import ActionMediaFolderPlugin, plugin_string_arg
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
@@ -89,7 +90,7 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
     def get_feature_flags(self):
         return MANAGE_MEDIA
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         return DownloadYt("Download YT", 'Downloading from YT', args['folder_id'], args['url'], args['dest'], self.primary_path,
                           self.archive_path, self.temp_path)
 
@@ -117,11 +118,7 @@ class DownloadYt(TaskWrapper):
 
         is_archive = self.dest == 'archive'
 
-        temp_folder = ''
-        try:
-            temp_folder = create_random_folder(self.temp_path)
-
-            self.info(f'Temp Folder: {temp_folder}')
+        with temporary_folder(self.temp_path, self) as temp_folder:
 
             arguments = ['-S', "res,ext:mp4:m4a", '--recode', 'mp4', '--embed-thumbnail',
                          'https://www.youtube.com/?v=' + self.video]
@@ -157,10 +154,7 @@ class DownloadYt(TaskWrapper):
                             new_file = insert_file(source_row.id, str(item), mime_type, is_archive, False, file_size,
                                                    created_datetime, db_session)
 
-                            if is_archive:
-                                dest_path = os.path.join(self.archive_path, new_file.id + '.dat')
-                            else:
-                                dest_path = os.path.join(self.primary_path, new_file.id + '.dat')
+                            dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
 
                             shutil.move(str(item_full_path), str(dest_path))
 
@@ -169,7 +163,3 @@ class DownloadYt(TaskWrapper):
             else:
                 self.error(f'Return Code {return_code}')
                 self.set_failure()
-
-        finally:
-            if is_not_blank(temp_folder) and os.path.exists(temp_folder):
-                shutil.rmtree(temp_folder)

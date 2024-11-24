@@ -49,7 +49,7 @@ class CheckDiskStatus(ActionPlugin):
     def get_category(self):
         return 'utility'
 
-    def create_task(self, session: Session, args):
+    def create_task(self, db_session: Session, args):
         return CreateDiskCheck("Disk", 'Check Disk Space')
 
 

@@ -7,11 +7,13 @@ from flask_sqlalchemy.session import Session
 from constants import PROPERTY_SERVER_VOLUME_FOLDER
 from db import Book
 from feature_flags import MANAGE_VOLUME
-from plugin_system import ActionPlugin, ActionBookPlugin
+from plugin_system import ActionPlugin, ActionBookPlugin, plugin_long_string_arg
+from plugins.book_update_headers import UpdateVolumeHeader
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
+from volume_utils import parse_curl_headers
 
 
 # Example function to group books by processor
@@ -106,11 +108,12 @@ class UpdateAllBooksTask(ActionPlugin):
             "default": "n",
             "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
             "values": [{"id": 'n', "name": 'New Chapters'}, {"id": 'a', "name": 'All Chapters'}]
-        }]
+        }, plugin_long_string_arg('Headers', 'headers',
+                                  'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.')]
 
         return result
 
-    def process_action_args(self, args):
+    def process_action_args(self, args: dict[str, any]):
         results = []
 
         if 'filter' not in args or args['filter'] is None or args['filter'] == '':
@@ -118,6 +121,14 @@ class UpdateAllBooksTask(ActionPlugin):
 
         if 'cleaning' not in args or args['cleaning'] is None or args['cleaning'] == '':
             results.append('cleaning is required')
+
+        if 'headers' not in args or is_blank(args['headers']):
+            args['headers'] = None
+        elif not args['headers'].startswith('curl'):
+            results.append('headers must be a curl bash command')
+        else:
+            header_dict = parse_curl_headers(args['headers'])
+            args['headers'] = header_dict
 
         if len(results) > 0:
             return results
@@ -131,6 +142,10 @@ class UpdateAllBooksTask(ActionPlugin):
     def create_task(self, db_session: Session, args):
 
         results = []
+
+        if args['headers'] is not None:
+            results.append(UpdateVolumeHeader(args['headers']))
+
         cleaning = (args['cleaning'] == 'a')
 
         books = db_session.query(Book).filter(Book.active == True).all()
@@ -140,7 +155,8 @@ class UpdateAllBooksTask(ActionPlugin):
 
         for book in interleaved_books:
             results.append(
-                DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder, '*', cleaning))
+                DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder, '*',
+                                 cleaning))
 
         return results
 
@@ -191,6 +207,8 @@ class UpdateSingleBookTask(ActionBookPlugin):
             "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
             "values": [{"id": 'n', "name": 'New Chapters'}, {"id": 'a', "name": 'All Chapters'}]
         })
+        result.append(plugin_long_string_arg('Headers', 'headers',
+                                  'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.'))
 
         return result
 
@@ -199,6 +217,14 @@ class UpdateSingleBookTask(ActionBookPlugin):
 
         if 'cleaning' not in args or args['cleaning'] is None or args['cleaning'] == '':
             results.append('cleaning is required')
+
+        if 'headers' not in args or is_blank(args['headers']):
+            args['headers'] = None
+        elif not args['headers'].startswith('curl'):
+            results.append('headers must be a curl bash command')
+        else:
+            header_dict = parse_curl_headers(args['headers'])
+            args['headers'] = header_dict
 
         if len(results) > 0:
             return results
@@ -218,11 +244,18 @@ class UpdateSingleBookTask(ActionBookPlugin):
         cleaning = (args['cleaning'] == 'a')
         results = []
 
+        if args['headers'] is not None:
+            results.append(UpdateVolumeHeader(args['headers']))
+
         if is_not_blank(book_id):
             book = find_book_by_id(book_id, db_session)
             if book is not None:
-                return DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder, '*',
-                                        cleaning == 'a')
+                the_book = DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors,
+                                            self.book_folder, '*', cleaning == 'a')
+                if len(results) == 0:
+                    return the_book
+                else:
+                    results.append(the_book)
 
         return results
 
