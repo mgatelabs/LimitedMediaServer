@@ -7,7 +7,7 @@ from werkzeug.utils import secure_filename
 
 from auth_utils import shall_authenticate_user, feature_required, feature_required_with_cookie, get_uid
 from common_utils import generate_success_response, generate_failure_response
-from constants import PROPERTY_SERVER_VOLUME_FOLDER, PROPERTY_SERVER_VOLUME_READY
+from constants import PROPERTY_SERVER_VOLUME_FOLDER, PROPERTY_SERVER_VOLUME_READY, APP_KEY_PROCESSORS
 from date_utils import convert_date_to_yyyymmdd, convert_datetime_to_yyyymmdd
 from db import db, Book
 from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_VOLUME
@@ -541,7 +541,7 @@ def get_processors(user_details: dict) -> tuple:
     Returns:
     tuple: JSON response with the list of processors and HTTP status code.
     """
-    processors = current_app.config['PROCESSORS']
+    processors = current_app.config[APP_KEY_PROCESSORS]
     modified = []
 
     for processor in processors:

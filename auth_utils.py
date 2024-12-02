@@ -1,4 +1,6 @@
 import logging
+import secrets
+import string
 from functools import wraps
 from typing import Optional
 
@@ -33,6 +35,8 @@ def _get_auth_status(required_features: int = 0, use_cookie: bool = False) -> Au
 
     if use_cookie:
         token = request.cookies.get('access_token')
+        if token is None and 'Authorization' in request.headers:
+            token = request.headers['Authorization'].split()[1]
     else:
         # Get the JWT token from the Authorization header
         if 'Authorization' in request.headers:
@@ -306,3 +310,7 @@ def get_username(user_details) -> Optional[str]:
         return None
 
     return user_details.get('username')
+
+def generate_secure_token(length=200):
+    characters = string.ascii_letters + string.digits  # A-Z, a-z, 0-9
+    return ''.join(secrets.choice(characters) for _ in range(length))

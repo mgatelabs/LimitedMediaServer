@@ -6,15 +6,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.testing.plugin.plugin_base import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from app_queries import update_user_features, update_user_limit, update_user_group
-from auth_utils import feature_required, feature_required_silent, shall_authenticate_user
+from app_queries import update_user_features, update_user_limit, update_user_group, find_all_hard_sessions, \
+    find_my_hard_sessions
+from auth_utils import feature_required, feature_required_silent, shall_authenticate_user, get_uid
 from common_utils import generate_failure_response, generate_success_response
 from constants import PROPERTY_DEFINITIONS
-from db import db, User, AppProperties, UserLimit, UserGroup
-from feature_flags import MANAGE_APP, SUPER_ADMIN
+from db import db, User, AppProperties, UserLimit, UserGroup, UserHardSession
+from feature_flags import MANAGE_APP, SUPER_ADMIN, HARD_SESSIONS
 from number_utils import is_integer
 from property_queries import get_all_properties, get_property
-from text_utils import is_valid_username, clean_string, is_blank, is_not_blank
+from text_utils import is_valid_username, clean_string, is_blank, is_not_blank, format_datatime
 from user_queries import get_all_users, get_user_by_id, get_all_groups, get_group_by_id, count_folders_for_group
 
 # Blueprint for admin routes
@@ -457,3 +458,74 @@ def limit_validator(features: str, book_limit: str, media_limit: str) -> Optiona
         return generate_failure_response('invalid media_limit parameter value', 400)
 
     return None
+
+
+@admin_blueprint.route('/list/hard_sessions', methods=['POST'])
+@feature_required_silent(admin_blueprint, MANAGE_APP)
+def list_hard_sessions():
+    """
+    List all application properties.
+    """
+    sessions = find_all_hard_sessions()
+    session_list = [
+        {'id': ses.id, 'uid': ses.user_id, 'created': format_datatime(ses.created), 'last': format_datatime(ses.last),
+         'expired': format_datatime(ses.expired)} for ses in sessions]
+    return generate_success_response('', {'hard_sessions': session_list})
+
+
+@admin_blueprint.route('/remove/hard_session', methods=['POST'])
+@feature_required_silent(admin_blueprint, MANAGE_APP)
+def delete_hard_session():
+    """
+    Delete a Hard Session by session_id.
+    """
+    session_id = clean_string(request.form.get('session_id'))
+    if not is_integer(session_id):
+        return generate_failure_response('session_id parameter is not an integer', 400)
+    session_id = int(session_id)
+
+    hard_session = UserHardSession.query.get(session_id)
+    if not hard_session:
+        return generate_failure_response('Hard Session not found', 404)
+
+    db.session.delete(hard_session)
+    db.session.commit()
+
+    return generate_success_response('Hard Session deleted')
+
+
+@admin_blueprint.route('/list/my/hard_sessions', methods=['POST'])
+@feature_required(admin_blueprint, HARD_SESSIONS)
+def list_my_hard_sessions(user_details):
+    """
+    List all application properties.
+    """
+    sessions = find_my_hard_sessions(get_uid(user_details))
+    session_list = [
+        {'id': ses.id, 'uid': ses.user_id, 'created': format_datatime(ses.created), 'last': format_datatime(ses.last),
+         'expired': format_datatime(ses.expired)} for ses in sessions]
+    return generate_success_response('', {'hard_sessions': session_list})
+
+
+@admin_blueprint.route('/remove/my/hard_session', methods=['POST'])
+@feature_required(admin_blueprint, HARD_SESSIONS)
+def delete_my_hard_session(user_details):
+    """
+    Delete a Hard Session by session_id for a specific user.
+    """
+    session_id = clean_string(request.form.get('session_id'))
+    if not is_integer(session_id):
+        return generate_failure_response('session_id parameter is not an integer', 400)
+    session_id = int(session_id)
+
+    hard_session = UserHardSession.query.get(session_id)
+    if not hard_session:
+        return generate_failure_response('Hard Session not found', 404)
+
+    if hard_session.useid != get_uid(user_details):
+        return generate_failure_response('Hard Session is not owned by you', 401)
+
+    db.session.delete(hard_session)
+    db.session.commit()
+
+    return generate_success_response('Hard Session deleted')

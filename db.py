@@ -22,6 +22,7 @@ class UserGroup(db.Model):
     description = db.Column(db.String(1024), nullable=True)  # Group description, optional
 
 
+
 # User model
 class User(db.Model):
     __tablename__ = 'users'
@@ -33,11 +34,37 @@ class User(db.Model):
 
     # Relationship to UserLimit with cascade delete
     limits = relationship('UserLimit', back_populates='user', cascade='all, delete-orphan')
+    hard_sessions = relationship('UserHardSession', back_populates='user', cascade='all, delete-orphan')
 
     # Foreign key to UserGroup
     user_group_id = db.Column(db.Integer, ForeignKey('user_groups.id'), nullable=True)  # Optional UserGroup
     user_group = db.relationship('UserGroup', backref='users')
 
+class UserHardSession(db.Model):
+    __tablename__ = 'user_hard_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)  # Auto-generated ID
+
+    # The user it is tied to
+    user_id = db.Column(db.Integer, ForeignKey('users.id'), nullable=False)  # Foreign key to User
+
+    # This is a random string that is used like a key
+    token = db.Column(db.String(200), nullable=False, unique=True)
+
+    # They must know the pin
+    pin = db.Column(db.String(200), nullable=False)
+
+    # Date/Time it was created
+    created = db.Column(db.DateTime(timezone=True), nullable=False, server_default=db.func.now())
+
+    # Last Date/Time it was used
+    last = db.Column(db.DateTime(timezone=True), nullable=True)  # Last time used
+
+    # When the pin was entered incorrectly
+    expired = db.Column(db.DateTime(timezone=True), nullable=True)  # Last time used
+
+    # Relationship back to User
+    user = relationship('User', back_populates='hard_sessions')
 
 # UserLimit model
 class UserLimit(db.Model):

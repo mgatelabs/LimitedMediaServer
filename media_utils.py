@@ -106,6 +106,21 @@ def parse_range_header(header, video_size):
     return start, end
 
 
+def read_file_chunk(filepath, start, length, chunk_size=8192):
+    """
+    Generator to read a file in chunks.
+    """
+    with open(filepath, 'rb') as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            chunk = f.read(min(chunk_size, remaining))
+            if not chunk:
+                break
+            yield chunk
+            remaining -= len(chunk)
+
+
 def get_media_max_rating(user_details):
     max_rating = 0
     if 'limits' in user_details and 'media' in user_details['limits']:
@@ -176,8 +191,9 @@ def convert_vtt_to_srt(vtt_file, srt_file):
         logging.exception(e)
         return False
 
-def get_file_by_user(file_id: str, user_details, db_session: Session = db.session) -> Optional[tuple[MediaFile, MediaFolder]]:
 
+def get_file_by_user(file_id: str, user_details, db_session: Session = db.session) -> Optional[
+    tuple[MediaFile, MediaFolder]]:
     if not is_guid(file_id):
         raise ValueError('file_id is not a valid GUID')
 
@@ -203,8 +219,8 @@ def get_file_by_user(file_id: str, user_details, db_session: Session = db.sessio
 
     return file, folder
 
-def get_folder_by_user(folder_id: str, user_details, db_session: Session = db.session) -> Optional[MediaFolder]:
 
+def get_folder_by_user(folder_id: str, user_details, db_session: Session = db.session) -> Optional[MediaFolder]:
     if not is_guid(folder_id):
         raise ValueError('file_id is not a valid GUID')
 
@@ -234,6 +250,7 @@ def describe_file_size_change(old_size, new_size):
     :param new_size: New file size in bytes.
     :return: A string describing the change in size.
     """
+
     def format_size(size):
         # Helper function to format bytes into a human-readable size
         for unit in ['B', 'KB', 'MB', 'GB', 'TB']:

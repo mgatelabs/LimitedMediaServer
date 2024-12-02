@@ -13,7 +13,7 @@ from constants import PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_SECRET_KEY, PROP
     PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, \
     PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_MEDIA_READY, \
     CONFIG_USE_HTTPS, PROPERTY_DEFINITIONS, PROPERTY_SERVER_VOLUME_READY, \
-    PROPERTY_SERVER_VOLUME_FOLDER
+    PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_SLC, APP_KEY_AUTHENTICATE, APP_KEY_PLUGINS, APP_KEY_PROCESSORS
 from db import init_db, db
 from health_routes import health_blueprint
 from media_routes import media_blueprint
@@ -22,6 +22,7 @@ from plugin_routes import plugin_blueprint
 from plugin_utils import get_plugins
 from process_routes import process_blueprint
 from serve_routes import serve_blueprint
+from short_lived_cache import ShortLivedCache
 from text_utils import is_not_blank
 from volume_routes import volume_blueprint
 from volume_utils import get_processors
@@ -112,19 +113,19 @@ if __name__ == '__main__':
             check_and_insert_property(property_definition, db.session)
 
     # Common arguments
-    parser.add_argument("-ssl_cert", type=str, help="cert.pem file path", required=False)
-    parser.add_argument("-ssl_key", type=str, help="key.pem file path", required=False)
 
     args = parser.parse_args()
 
+    app.config[APP_KEY_SLC] = ShortLivedCache()
+
     # Configure processors
-    app.config['PROCESSORS'] = processors
+    app.config[APP_KEY_PROCESSORS] = processors
 
     # Common configurations
-    app.config['AUTHENTICATE'] = False
-    app.config['PLUGINS'] = plugins
+    app.config[APP_KEY_AUTHENTICATE] = False
+    app.config[APP_KEY_PLUGINS] = plugins
 
-    use_ssl = args.ssl_cert and args.ssl_key
+    use_ssl = False
 
     with app.app_context():
 
@@ -174,9 +175,6 @@ if __name__ == '__main__':
     # Make sure we can serve files
     app.register_blueprint(serve_blueprint)
 
-    # Run the app with or without SSL
-    ssl_context = (args.ssl_cert, args.ssl_key) if use_ssl else None
-
     local_ip = app.config[PROPERTY_SERVER_HOST_KEY]
 
     if local_ip == '0.0.0.0':
@@ -187,5 +185,4 @@ if __name__ == '__main__':
         if not is_private_ip(local_ip):
             print('Error: IP Address is not a local address, do not expose this server to the Internet!!!!')
 
-    app.run(host=app.config[PROPERTY_SERVER_HOST_KEY], port=app.config[PROPERTY_SERVER_PORT_KEY], debug=False,
-            ssl_context=ssl_context)
+    app.run(host=app.config[PROPERTY_SERVER_HOST_KEY], port=app.config[PROPERTY_SERVER_PORT_KEY], debug=False)

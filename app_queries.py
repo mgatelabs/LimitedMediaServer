@@ -5,7 +5,7 @@ from app_properties import AppPropertyDefinition
 from constants import PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, \
     PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_SECRET_KEY, PROPERTY_SERVER_HOST_KEY, \
     PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_VOLUME_FOLDER
-from db import AppProperties, User, UserLimit, db
+from db import AppProperties, User, UserLimit, db, UserHardSession
 from text_utils import is_not_blank
 
 
@@ -45,7 +45,7 @@ def get_server_port() -> int:
     except ValueError:
         pass
     # Fallback to default
-    return 18080
+    return 80
 
 
 def get_server_host() -> str:
@@ -188,3 +188,9 @@ def update_user_limit(user: User, limits: list[type[UserLimit]], limit_id: str, 
     # Add and commit the new book
     db_session.add(new_limit)
     return True
+
+def find_all_hard_sessions(db_session: Session = db.session):
+    return db_session.query(UserHardSession).order_by(UserHardSession.user_id, UserHardSession.id).all()
+
+def find_my_hard_sessions(user_id: int, db_session: Session = db.session):
+    return db_session.query(UserHardSession).filter(UserHardSession.user_id == user_id).order_by(UserHardSession.user_id, UserHardSession.id).all()

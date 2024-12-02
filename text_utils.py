@@ -1,5 +1,6 @@
 import re
 import uuid
+from datetime import datetime
 from typing import Optional, Tuple, List
 
 
@@ -79,14 +80,14 @@ def is_valid_book_id(value: str) -> bool:
     return bool(re.match(pattern, value))
 
 
-def find_line_with_text(text, input_string):
+def find_line_with_text(needle, haystack):
     # Split the input string into lines
-    lines = input_string.split('\n')
+    lines = haystack.split('\n')
 
     # Iterate over each line
     for line in lines:
         # Check if the text is in the line
-        if text in line:
+        if needle in line:
             return line
 
     # If text is not found in any line
@@ -340,3 +341,8 @@ def extract_artist_title_from_audio_filename(filename):
     title = re.sub(r'\[.*\]', '', title_with_brackets).strip()
 
     return artist, title
+
+def format_datatime(value: Optional[datetime]):
+    if not value:
+        return ''
+    return value.strftime("%Y-%m-%d %H:%M:%S")

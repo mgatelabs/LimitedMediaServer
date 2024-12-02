@@ -4,7 +4,7 @@ from itertools import cycle
 
 from flask_sqlalchemy.session import Session
 
-from constants import PROPERTY_SERVER_VOLUME_FOLDER
+from constants import PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_PROCESSORS
 from db import Book
 from feature_flags import MANAGE_VOLUME
 from plugin_system import ActionPlugin, ActionBookPlugin
@@ -77,7 +77,7 @@ class CheckAllTagsTask(ActionPlugin):
         return None
 
     def absorb_config(self, config):
-        self.processors = config['PROCESSORS']
+        self.processors = config[APP_KEY_PROCESSORS]
 
     def create_task(self, db_session: Session, args):
 
@@ -147,7 +147,7 @@ class UpdateSingleTagsTask(ActionBookPlugin):
         return None
 
     def absorb_config(self, config):
-        self.processors = config['PROCESSORS']
+        self.processors = config[APP_KEY_PROCESSORS]
 
     def get_feature_flags(self):
         return MANAGE_VOLUME

@@ -1,17 +1,18 @@
 import logging
 import os
-from pathlib import Path
 import shutil
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from PIL import Image
-from flask import Blueprint, request, current_app, make_response, send_from_directory, Response, send_file
+from flask import Blueprint, request, current_app, make_response, send_from_directory, Response, send_file, \
+    stream_with_context
 from werkzeug.utils import secure_filename
 
 from auth_utils import feature_required, feature_required_with_cookie, get_user_features, get_user_group_id, get_uid
 from common_utils import generate_success_response, generate_failure_response
 from constants import PROPERTY_SERVER_MEDIA_READY, COMMON_MEDIA_RATINGS, PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, \
-    PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER
+    PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, APP_KEY_SLC
 from date_utils import convert_date_to_yyyymmdd, convert_datetime_to_yyyymmdd
 from db import db, MediaFolder, MediaFile
 from feature_flags import VIEW_MEDIA, MANAGE_MEDIA, MEDIA_PLUGINS, MANAGE_APP
@@ -20,8 +21,9 @@ from media_queries import find_folder_by_id, find_root_folders, find_folders_in_
     insert_folder, update_folder, find_file_by_id, update_file, count_folders_in_folder, count_root_folders, \
     count_files_in_folder, insert_file, upsert_progress, find_progress_entries
 from media_utils import calculate_offset_limit, parse_range_header, get_data_for_mediafile, get_media_max_rating, \
-    get_folder_group_checker, get_folder_rating_checker, user_can_see_rating
+    get_folder_group_checker, get_folder_rating_checker, user_can_see_rating, read_file_chunk
 from number_utils import is_integer, is_boolean, parse_boolean
+from short_lived_cache import ShortLivedCache
 from text_utils import clean_string, is_not_blank, is_blank, is_guid
 from user_queries import get_all_groups, get_group_by_id
 
@@ -455,6 +457,7 @@ def delete_media_folder(user_details: dict) -> tuple:
         logging.exception(e)
         return generate_failure_response('Failed to delete folder')
 
+
 @media_blueprint.route('/folder/move', methods=['POST'])
 @feature_required(media_blueprint, MANAGE_MEDIA)
 def move_media_folder(user_details: dict) -> tuple:
@@ -486,7 +489,8 @@ def move_media_folder(user_details: dict) -> tuple:
             return generate_failure_response('Destination folder does not exist')
 
         if not folder_rating_checks(target_folder_row):
-            return generate_failure_response('User is not allowed to move a file into a folder with a higher rating limit')
+            return generate_failure_response(
+                'User is not allowed to move a file into a folder with a higher rating limit')
 
         if not folder_group_checks(target_folder_row):
             return generate_failure_response(
@@ -519,6 +523,7 @@ def move_media_folder(user_details: dict) -> tuple:
     db.session.commit()
 
     return generate_success_response('Folder Moved')
+
 
 # File Management
 
@@ -743,6 +748,7 @@ def delete_media_file(user_details: dict) -> tuple:
 
     return generate_success_response('File deleted')
 
+
 @media_blueprint.route('/file/move', methods=['POST'])
 @feature_required(media_blueprint, MANAGE_MEDIA)
 def move_media_file(user_details: dict) -> tuple:
@@ -796,6 +802,7 @@ def move_media_file(user_details: dict) -> tuple:
     db.session.commit()
 
     return generate_success_response('File Moved')
+
 
 # Upload random files
 
@@ -931,9 +938,9 @@ def serve_media_thumbnail(user_details, folder_id):
 
 # Getting actual Content
 
-@media_blueprint.route('/download', methods=['POST'])
+@media_blueprint.route('/download/<file_id>', methods=['GET', 'POST'])
 @feature_required_with_cookie(media_blueprint, VIEW_MEDIA)
-def download_media_file(user_details):
+def download_media_file(user_details, file_id):
     """
     Download a file from the server
     :return: File contents
@@ -942,8 +949,8 @@ def download_media_file(user_details):
         return generate_failure_response(
             'This feature is not ready.  Please configure the app properties and restart the server.')
 
-    # Process Query Parameters
-    file_id = clean_string(request.form['file_id'])
+    # Process Parameters
+    file_id = clean_string(file_id)
 
     # Checkers
     folder_group_checks = get_folder_group_checker(user_details)
@@ -1097,53 +1104,131 @@ def stream_media_file(user_details):
     if not folder_rating_checks(containing_folder) or not folder_group_checks(containing_folder):
         return generate_failure_response('User is not allowed to see this folder', 403)
 
-    if is_archive:
-        target_folder = current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER]
-    else:
-        target_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
-
-    target_path = os.path.join(target_folder, file_id + '.dat')
+    target_path = get_data_for_mediafile(file, current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER], current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER])
 
     if target_path is None or not os.path.isfile(target_path):
         return generate_failure_response('requested file not found', 404)
 
-    # Determine the range requested by the client
     range_header = request.headers.get('Range', None)
-
-    # Open the video file
-    video_file = open(target_path, 'rb')
-
-    # Get the size of the video file
-    video_size = os.path.getsize(target_path)
-
-    # Set the start and end positions for the requested range
-    start, end = 0, video_size - 1
     if range_header:
-        # Parse the range header to get start and end positions
-        start, end = parse_range_header(range_header, video_size)
+        # Handle byte range requests for partial content
+        try:
+            start, end = parse_range_header(range_header, os.path.getsize(target_path))
+            length = end - start + 1
+            response = Response(
+                stream_with_context(read_file_chunk(target_path, start, length)),
+                206,  # Partial Content
+                mimetype=mimetype,
+                headers={
+                    'Content-Range': f'bytes {start}-{end}/{os.path.getsize(target_path)}',
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': str(length),
+                }
+            )
+            return response
+        except ValueError:
+            return generate_failure_response('Invalid range', 416)  # Range Not Satisfiable
 
-    # Set the Content-Range header to inform the client about the range being served
-    content_range = f'bytes {start}-{end}/{video_size}'
+    # Stream the entire file if no range is provided
+    return send_file(target_path, mimetype=mimetype)
 
-    # Seek to the start position of the requested range
-    video_file.seek(start)
 
-    # Calculate the length of data to be sent
-    length = end - start + 1
+@media_blueprint.route('/request-unsafe-stream', methods=['POST'])
+@feature_required_with_cookie(media_blueprint, VIEW_MEDIA)
+def request_unsafe_stream_media_file(user_details):
+    """
+    Stream a file from the server
+    :return: File contents
+    """
+    if not current_app.config[PROPERTY_SERVER_MEDIA_READY]:
+        return generate_failure_response(
+            'This feature is not ready.  Please configure the app properties and restart the server.')
 
-    # Create a response with the video file content
-    response = Response(
-        video_file.read(length),
-        206,  # Partial Content status code
-        mimetype=mimetype,
-        headers={
-            'Content-Range': content_range,
-            'Accept-Ranges': 'bytes',
-            'Content-Length': str(length)
-        }
-    )
+    file_id = clean_string(request.args.get('file_id'))
 
-    return response
+    # Checkers
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    if not is_guid(file_id):
+        return generate_failure_response('invalid file_id value', 404)
+
+    file = find_file_by_id(file_id)
+
+    if file is None:
+        return generate_failure_response('file not found', 404)
+
+    containing_folder = file.mediafolder
+
+    if containing_folder is None:
+        return generate_failure_response('file error, missing parent', 400)
+
+    if not folder_rating_checks(containing_folder) or not folder_group_checks(containing_folder):
+        return generate_failure_response('User is not allowed to see this folder', 403)
+
+    slc: ShortLivedCache = current_app.config[APP_KEY_SLC]
+
+    cache_id = slc.add_item(file.id)
+
+    return generate_success_response('', {"cache_id": cache_id})
+
+
+@media_blueprint.route('/unsafe-stream', methods=['GET'])
+def unsafe_stream_media_file():
+    """
+    Stream a file from the server
+    :return: File contents
+    """
+    if not current_app.config[PROPERTY_SERVER_MEDIA_READY]:
+        return generate_failure_response(
+            'This feature is not ready.  Please configure the app properties and restart the server.')
+
+    cache_id = clean_string(request.args.get('cache_id'))
+
+    slc: ShortLivedCache = current_app.config[APP_KEY_SLC]
+
+    cache_item = slc.get_item(cache_id)
+
+    if cache_item is None:
+        return generate_failure_response('file not found', 404)
+
+    file_id = cache_item['file_id']
+
+    file = find_file_by_id(file_id)
+
+    if file is None:
+        return generate_failure_response('file not found', 404)
+
+    is_archive = file.archive
+    mimetype = file.mime_type
+
+    target_path = get_data_for_mediafile(file, current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER], current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER])
+
+    if target_path is None or not os.path.isfile(target_path):
+        return generate_failure_response('requested file not found', 404)
+
+    range_header = request.headers.get('Range', None)
+    if range_header:
+        # Handle byte range requests for partial content
+        try:
+            start, end = parse_range_header(range_header, os.path.getsize(target_path))
+            length = end - start + 1
+            response = Response(
+                stream_with_context(read_file_chunk(target_path, start, length)),
+                206,  # Partial Content
+                mimetype=mimetype,
+                headers={
+                    'Content-Range': f'bytes {start}-{end}/{os.path.getsize(target_path)}',
+                    'Accept-Ranges': 'bytes',
+                    'Content-Length': str(length),
+                }
+            )
+            return response
+        except ValueError:
+            return generate_failure_response('Invalid range', 416)  # Range Not Satisfiable
+
+    # Stream the entire file if no range is provided
+    return send_file(target_path, mimetype=mimetype)
 
 
 # Node Logic

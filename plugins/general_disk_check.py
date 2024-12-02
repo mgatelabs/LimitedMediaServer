@@ -65,6 +65,9 @@ def get_disk_usage():
                               'used': psutil.disk_usage(partition.mountpoint).used,
                               'free': psutil.disk_usage(partition.mountpoint).free,
                               'percent': psutil.disk_usage(partition.mountpoint).percent}
+            if partition_info['mountpoint'].startswith('/boot'):
+                continue
+
             disk_usage_info.append(partition_info)
         except Exception as ex:
             logging.exception(ex)
@@ -94,10 +97,9 @@ class CreateDiskCheck(TaskWrapper):
     def run(self, db_session):
         disk_info = get_disk_usage()
         for info in disk_info:
-            self.add_log("Device:", info['device'])
-            self.add_log("Mount Point:", info['mountpoint'])
-            self.add_log("File System Type:", info['fstype'])
-            self.add_log("Total Space:", format_bytes(info['total']))
-            self.add_log("Used Space:", format_bytes(info['used']))
-            self.add_log("Free Space:", format_bytes(info['free']))
-            self.add_log("Percentage Used:", str(info['percent']) + "%")
+            self.always("Device:", info['device'])
+            self.info("Mount Point:", info['mountpoint'], "File System Type:", info['fstype'])
+            self.info("Total Space:", format_bytes(info['total']))
+            self.info("Used Space:", format_bytes(info['used']))
+            self.info("Free Space:", format_bytes(info['free']))
+            self.info("Percentage Used:", str(info['percent']) + "%")
