@@ -266,29 +266,41 @@ However, this default account is intentionally limited and should not be used fo
 
 By removing the default admin account, you significantly improve the security of your server.
 
-### Property Setup
+### Property Setup  
 
-Use the Management (Top Right Icon) > Management > Property Listing
+Properties are key values stored in the database that control how the application operates. Without configuring these properties, certain features, such as viewing books or media, will not function properly.  
 
-From here you need to adjust the following properties.  Server restart is required after making property changes.
+To set up properties:  
 
-#### SERVER.MEDIA.PRIMARY.FOLDER
-This needs to be the path to folder where the primary media files will be stored.  It should be on a fast disk.
+1. Navigate to **Management** (Top-right icon).  
+2. Select **Management** > **Property Listing**.  
+3. Adjust the following properties as needed:  
 
-#### SERVER.MEDIA.ARCHIVE.FOLDER
-This needs to be the path to folder where the archived media files will be stored.  This should be on a different disk.
+![image](https://github.com/user-attachments/assets/4845981e-1db1-49e1-9209-ef5f9cf56bf3)
 
-#### SERVER.MEDIA.TEMP.FOLDER
-This needs to be the path to folder where the temp media files will be stored.  This should be on a fast disk.
+> **Note:** A server restart is required after making property changes to apply them.
 
-#### SERVER.VOLUME.FOLDER
-This needs to be the path to folder where volume/manga folders will be stored.  This should be on a fast disk.
+#### Key Properties  
+
+1. **`SERVER.MEDIA.PRIMARY.FOLDER`**  
+   - **Description**: The path to the folder where primary media files are stored.  
+   - **Recommendation**: Store this folder on a fast disk for optimal performance.  
+
+2. **`SERVER.MEDIA.ARCHIVE.FOLDER`**  
+   - **Description**: The path to the folder where archived media files are stored.  
+   - **Recommendation**: Use a separate disk for this folder to avoid overloading the primary disk.  
+
+3. **`SERVER.MEDIA.TEMP.FOLDER`**  
+   - **Description**: The path to the folder for temporary media files.  
+   - **Recommendation**: Store this folder on a fast disk for quick read/write operations.  
+
+4. **`SERVER.VOLUME.FOLDER`**  
+   - **Description**: The path to the folder for volume/manga-related folders.  
+   - **Recommendation**: Store this folder on a fast disk to enhance access speed.  
+
+---
 
 ### Additional Setup
-
-The server can be used with self-signed certificates for some added security.  When executing the server, add the following arguments:
-1. -ssl_cert PATH_TO_cert.pem
-2. -ssl_key PATH_TO_key.pem
 
 ## Self Signed Certificates
 
