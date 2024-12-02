@@ -67,7 +67,7 @@ if __name__ == '__main__':
 
     property_definitions = [
         # Server
-        AppPropertyDefinition(PROPERTY_SERVER_PORT_KEY, '18080',
+        AppPropertyDefinition(PROPERTY_SERVER_PORT_KEY, '80',
                               'Default port number. Restart server if changed.',
                               [value_is_integer, value_is_between_int_x_y(1, 65535)]),
         AppPropertyDefinition(PROPERTY_SERVER_SECRET_KEY, get_random_hash,
