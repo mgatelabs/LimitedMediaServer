@@ -232,6 +232,21 @@ pip install -r requirements.txt
 python server.py
 ```
 
+Also, incase you want to update to latest source code:
+
+```bash
+cd LimitedMediaServerSite
+git fetch
+git pull
+npm install
+ng build
+cd ..
+cd LimitedMediaServer
+git fetch
+git pull
+pip install -r requirements.txt
+```
+
 If everything is worked, open your browser to http://serveraddress/, for your local machine it would be [http://localhost](http://localhost).
 
 ### User Setup
