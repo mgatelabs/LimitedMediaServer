@@ -49,6 +49,8 @@ I built this server to take advantage of the new Raspberry PI 5 feature to run o
       2. G, PG, PG-13, R-17, Rx, Unrated
    3. Security groups
       1. Users can inherit a security group, groups can be assigned to a folder
+   4. Hard Sessions
+      1. For devices where typing the password can be challenging, use a pin instead.  The device must login normally first, then the user can establish a Hard Session.   
 5. Admin notices
    1. APP Admins don't have to follow the Security Group rules
 6. Plugins
@@ -230,13 +232,39 @@ pip install -r requirements.txt
 python server.py
 ```
 
-If everything is working, open your browser to http://serveraddress:18080/
+If everything is worked, open your browser to http://serveraddress/, for your local machine it would be [http://localhost](http://localhost).
 
-### User setup
+### User Setup
 
-You can now log in as the user 'admin' with the password 'admin'.  The default account was created to not be very useful.
+To begin using the server, you can log in with the default admin account:
 
-Use the Management (Top Right Icon) > User Listing > New User (2nd Right Icon).  After making a real account, logout and back in as your new user.  Please delete the existing ADMIN account.
+- **Username**: `admin`  
+- **Password**: `admin`
+
+However, this default account is intentionally limited and should not be used for regular operations. Follow these steps to set up your own account and secure the server:
+
+1. **Log in with the Default Admin Account**  
+   Use the default credentials to access the system.
+
+2. **Create a New User Account**  
+   - Navigate to **Management** (Top Right Icon).  
+   - Go to **User Listing**.  
+   - Click **New User** (2nd Right Icon) to create a new account with the appropriate username, password, and permissions.
+  
+![image](https://github.com/user-attachments/assets/f78982af-95a4-4703-ba9d-6751872a663b)
+
+3. **Log Out and Log In as the New User**  
+   After creating your new user account, log out of the default `admin` account.  
+   Log back in using your newly created account to ensure everything is set up correctly.
+
+4. **Delete the Default Admin Account**  
+   Once you are successfully logged in with your new account, delete the default `admin` account to improve security:  
+   - Return to **User Listing** under **Management**.  
+   - Select the default `admin` account and delete it.
+
+---
+
+By removing the default admin account, you significantly improve the security of your server.
 
 ### Property Setup
 
