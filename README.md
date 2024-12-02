@@ -1,19 +1,19 @@
 # Limited Media Server
 
-The Server part of Limited Media Server.  The site is located [here](https://github.com/mgatelabs/LimitedMediaServerSite).
+This is the back-end (Server) part of Limited Media Server.  The site portion is located [here](https://github.com/mgatelabs/LimitedMediaServerSite).
 
 ## What is Limited Media Server?
 
 Limited Media Server is a platform for sharing media and manga in a *local network environment*.
 
-A common use case for this sever, is accessing it via a VPN to read manga or watch videos on the go, all streaming from your home.
+A common use case for this sever, is accessing it via a VPN to read manga or watch videos on the go, all streaming from your home.  A 2nd use case is running the server locally on your desktop to stream content to compitable apps, such as Mobile VR Station.
 
 ### Notice
-Do not expose this server to the general internet, you have been warned.  Always put it behind a VPN.
+Do not expose this server to the general internet, you have been warned.  It should always be ran on a private network, and if internet access is desired, put it behind a VPN.
 
 ### Cool tip
 
-I built this server to take advantage of the new Raspberry PI 5 feature to run on NVMe drives, which offers a substantial speed boost.
+I built this server to take advantage of the new Raspberry PI 5 feature to run on NVMe drives, which offers a substantial speed boost and larger storage.
 
 ## Features
 
@@ -67,7 +67,7 @@ In this example the user could select items on the left side to delete or move t
 
 ### Example Process Detail
 
-![image](https://github.com/user-attachments/assets/b6197dec-37f8-4db1-bb3e-65bd865d05b2)
+![image](https://github.com/user-attachments/assets/91fbc363-fa54-42bc-8a51-c55ac42c86e9)
 
 ### How to access Server Management
 
@@ -76,6 +76,143 @@ In this example the user could select items on the left side to delete or move t
 1. User Listing lets you Add, Edit and Remove users
 2. Group Listing lets you setup a security group, which users can have a group and media folders can have a group
 3. Property Listings lets you change how the server works.  Paths to folders, ports and other settings.
+
+## Requirements
+
+### Installing Python
+
+To run the server, you need Python 3.x installed. Follow these steps to install Python:
+
+1. **Download Python**  
+   Visit the official Python website and download the latest version of Python 3.x:  
+   [Python Downloads](https://www.python.org/downloads/)
+
+2. **Install Python**  
+   During the installation process:  
+   - Select **"Install for all users"** to ensure Python is available for the entire machine, not just your user account.  
+   - Check the box to **"Add Python to PATH"** at the beginning of the installation wizard. This step is crucial for Python to work seamlessly from the command line.  
+
+3. **Verify Installation**  
+   After the installation is complete, verify it by opening a terminal or Command Prompt and running the following commands:  
+```bash
+   python --version
+```
+or (depending on your system setup):
+
+```bash
+python3 --version
+```
+You should see the installed version of Python printed.
+
+### Setting Up Node.js, NPM, and Angular CLI for Angular 17 Development
+
+To develop with Angular 17, you need Node.js, NPM, and Angular CLI (`ng`) installed. Follow the steps below to set up your environment:
+
+---
+
+#### 1. **Install Node.js (Includes NPM)**
+
+1. **Download Node.js**  
+   Visit the official Node.js website and download the **LTS** version for your platform:  
+   [Node.js Downloads](https://nodejs.org/)
+
+2. **Install Node.js**  
+   During the installation:
+   - Check the option to install **"Tools for Native Modules"** if prompted (this ensures compatibility with certain npm packages).  
+   - Confirm that Node.js is added to the system **PATH** (this is typically done automatically).
+
+3. **Verify Installation**  
+   Open a terminal or Command Prompt and run:
+```bash
+node -v
+```
+
+This will print the installed Node.js version. Ensure it is a version supported by Angular 17 (16.x or later).
+
+4. Check NPM
+
+NPM is bundled with Node.js. Verify it by running:
+
+```bash
+npm -v
+```
+
+This will print the installed NPM version.
+
+#### 2. Install Angular CLI (ng)
+
+1. Install the CLI
+
+Use NPM to globally install Angular CLI:
+
+```bash
+npm install -g @angular/cli
+```
+
+2. Verify the Installation
+
+Confirm that Angular CLI is installed by running:
+
+```bash
+ng version
+```
+
+This command displays the installed Angular CLI version and ensures your setup is working.
+Ensure the CLI version supports Angular 17 (you may need the latest Angular CLI).
+
+3. Update NPM (Optional)
+
+If you encounter issues with NPM or want to ensure you're using the latest version, update NPM:
+
+```bash
+npm install -g npm@latest
+```
+
+Verify the update with:
+
+```bash
+npm -v
+```
+
+### Installing Git (For Easy Updates)
+
+Git is essential for version control in development. Follow these steps to install and configure Git:
+
+---
+
+#### 1. **Download Git**
+
+Visit the official Git website to download the latest version of Git for your operating system:  
+[Git Downloads](https://git-scm.com/downloads)
+
+---
+
+#### 2. **Install Git**
+
+1. **Run the Installer**  
+   - Open the downloaded installer file and follow the setup wizard.
+
+2. **Configuration Options**  
+   During the installation, you will encounter several configuration options. Recommended settings include:
+   - **Select Components**: Leave all default options checked.
+   - **Adjust Path Environment**: Choose **"Git from the command line and also from 3rd-party software"** (recommended for most users).
+   - **Default Editor**: Select your preferred text editor (e.g., Vim, Visual Studio Code, Notepad++).
+   - **Configuring Line Endings**: Choose **"Checkout Windows-style, commit Unix-style line endings"** for cross-platform projects.
+   - **Extra Options**: Enable **"Enable symbolic links"** if needed for your projects.
+
+3. **Complete the Installation**  
+   Click **Finish** to complete the installation.
+
+---
+
+#### 3. **Verify Installation**
+
+1. Open a terminal or Command Prompt and run:
+```bash
+git --version
+```
+
+You should see the installed version of Git.
 
 ## Basic Setup
 
