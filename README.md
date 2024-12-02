@@ -302,20 +302,6 @@ To set up properties:
 
 ### Additional Setup
 
-## Self Signed Certificates
-
-If you want to run with HTTPS and you are using a raspberry pi, use the following command from the terminal to generate a key pair:
-
-```
-openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
-```
-
-Then in the script to load the service (seen later) you can point it to the files on disk via the following parameters:
-
-```
-python server.py -ssl_cert /home/admin/ssl/cert.pem -ssl_key /home/admin/ssl/key.pem
-```
-
 ## Advanced Development Configuration
 
 ### As a Raspberry PI 5 media/development server
@@ -368,7 +354,7 @@ while true; do
     fi    
 
     # Call your Python program here and capture its output
-    python server.py -ssl_cert /home/admin/ssl/cert.pem -ssl_key /home/admin/ssl/key.pem
+    python server.py
     result=$?
 
     echo "Result: $result"
@@ -462,3 +448,115 @@ This is what I built
 
 1. iOS Won't Play Audio / Video
    1. It seems like the new privacy settings are blocking the app from sending cookies.  Turn off "Prevent Cross-Site Tracking" in Safari settings and it will work.
+  
+## Securing your Server
+
+While it's possible to run the server with a self-signed certificate, doing so may cause issues with Mobile VR Station. Instead, a more reliable solution is to proxy your server via HTTPS to ensure a secure connection. Below, we’ll guide you through setting up NGINX as a reverse proxy on a Linux-based system, such as a Raspberry Pi.
+
+The instructions provided will be for a linux based machince, like a Raspberry PI.
+
+### Step -1: Free Port 80
+
+Turn off Limited Media Server, so the Nginx install won't get angry with you holding onto port 80.
+
+### Step 0: Generate a Self Signed Certificate
+
+For a local server, generating a self-signed certificate is a quick and cost-effective solution. However, be warned: the browser will absolutely dislike using this certificate and will throw up warnings about the connection not being secure. This happens because the certificate isn't issued by a trusted Certificate Authority (CA), but it's the only way to make your server accessible securely without spending money on a trusted certificate — especially when dealing with a local, non-production server.
+
+You can generate an SSL certificate pair (certificate and key) that will last for 365 days with the following command:
+
+```bash
+openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
+```
+
+After it expires, you can re-issue the command to make a new pair.
+
+### Step 1: Install Nginx
+
+If Nginx is not already installed, you can install it using the following command:
+
+```bash
+sudo apt update
+sudo apt install nginx -y
+```
+
+### Step 2: Enable Nginx at Boot
+
+By default, Nginx is installed as a systemd service, so you can enable it to start on boot:
+
+```bash
+sudo systemctl enable nginx
+```
+
+This ensures that Nginx starts automatically whenever your Raspberry Pi is rebooted.
+
+### Step 3: Start Nginx
+
+To start Nginx immediately, use the following command:
+
+```bash
+sudo systemctl start nginx
+```
+
+### Step 4: Verify Nginx is Running
+
+Check the status of the Nginx service:
+```bash
+sudo systemctl status nginx
+```
+
+You should see output indicating that the service is active and running.
+
+### Step 5: Configure Nginx as a Reverse Proxy
+Next, configure Nginx to securely proxy HTTPS traffic to your Flask application. To do so, you'll need to edit the Nginx configuration file:
+
+```bash
+sudo nano /etc/nginx/sites-available/default
+```
+
+Replace the contents with this example configuration:
+
+```text
+server {
+    listen 443 ssl;
+    server_name your_domain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:80; # Port your Flask app is running on
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+```
+
+Note: Replace /path/to/cert.pem and /path/to/key.pem with the actual paths to your SSL certificate and key files.
+
+Save and close the file (Ctrl+O, Enter, then Ctrl+X).
+
+### Step 6: Test Nginx Configuration
+
+Before applying the changes, ensure there are no syntax errors in your Nginx configuration:
+
+```bash
+sudo nginx -t
+```
+
+If the test is successful, you’ll see a message like:
+
+```text
+nginx: configuration file /etc/nginx/nginx.conf test is successful
+```
+
+### Step 7: Reload Nginx to Apply Changes
+
+To activate the new configuration, reload Nginx:
+
+```bash
+sudo systemctl reload nginx
+```
+
+With these steps, your server should now be securely proxying HTTPS traffic to your Flask application, ensuring that Mobile VR Station and other services can connect without issues.
