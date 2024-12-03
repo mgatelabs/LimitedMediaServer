@@ -463,6 +463,25 @@ This is what I built
 
 1. iOS Won't Play Audio / Video
    1. It seems like the new privacy settings are blocking the app from sending cookies.  Turn off "Prevent Cross-Site Tracking" in Safari settings and it will work.
+
+## Additional Arguments
+
+### --list-plugins
+
+The App will list the current Plugins to the command line / terminal.
+
+### --list-processors
+
+The App will list the current Processors to the command line / terminal.
+
+### --skip-run
+
+The App will stop early.  Useful for testing
+
+### --port-override
+
+Force the app to start on the specified Port number.
+
   
 ## Securing your Server
 
