@@ -2,6 +2,7 @@ import importlib
 import json
 import os
 import re
+import pkgutil
 
 from processors.processor_core import CustomDownloadInterface
 
@@ -26,19 +27,25 @@ def remove_entry_from_list(data_list, remove_entry):
 
 def get_processors(plugin_dir):
     """
-    Load and return all processors from the specified directory.
+    Load and return all processors from the specified directory/package.
     """
     all_processors = []
-    for filename in os.listdir(plugin_dir):
-        if filename.endswith('.py') and filename != '__init__.py':
-            module_name = filename[:-3]  # Remove .py extension
+    package = importlib.import_module(plugin_dir)
+
+    # Use pkgutil to find modules in the package
+    for _, module_name, is_pkg in pkgutil.iter_modules(package.__path__):
+        if not is_pkg:  # Skip sub-packages
             module = importlib.import_module(f'{plugin_dir}.{module_name}')
             for name in dir(module):
                 obj = getattr(module, name)
-                if isinstance(obj, type) and obj != CustomDownloadInterface:
-                    if issubclass(obj, CustomDownloadInterface):
-                        # noinspection PyArgumentList
-                        all_processors.append(obj())
+                if (
+                    isinstance(obj, type) and
+                    issubclass(obj, CustomDownloadInterface) and
+                    obj != CustomDownloadInterface
+                ):
+                    # Instantiate and append to the list
+                    all_processors.append(obj())
+
     return sorted(all_processors, key=custom_processor_sort_key)
 
 

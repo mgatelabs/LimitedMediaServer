@@ -49,7 +49,10 @@ def add_csp_headers(response):
     return response
 
 
-app.config.from_object('config.Config')
+# app.config.from_object('config.Config')
+app.config['DATABASE_URI'] = 'sqlite:///instance/localmediaserver.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///localmediaserver.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize the database
 init_db(app)
@@ -61,6 +64,29 @@ if __name__ == '__main__':
 
     # Set up argument parser
     parser = argparse.ArgumentParser(description="Media Server")
+
+    # Add optional arguments with defaults
+    parser.add_argument(
+        '--list-plugins',
+        action='store_true',
+        help="Set to True to list plugins. Default is False."
+    )
+    parser.add_argument(
+        '--list-processors',
+        action='store_true',
+        help="Set to True to list processors. Default is False."
+    )
+    parser.add_argument(
+        '--skip-run',
+        action='store_true',
+        help="Set to True to stop execution. Default is False."
+    )
+    parser.add_argument(
+        '--port-override',
+        type=int,
+        default=0,
+        help="Specify a port override (integer). Default is 0."
+    )
 
     for plugin in plugins['all']:
         plugin.add_args(parser)
@@ -116,6 +142,28 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    if args.list_plugins:
+        print('---------------------------')
+        print('-Discovered Plugins')
+        count = 0
+        for plugin in plugins['all']:
+            count = count + 1
+            plug_id = plugin.get_action_id()
+            plug_name = plugin.get_action_name()
+            print(f'#{count} - {plug_name} ({plug_id})')
+        print()
+
+    if args.list_processors:
+        print('---------------------------')
+        print('-Discovered Processors')
+        count = 0
+        for plugin in processors:
+            count = count + 1
+            plug_id = plugin.get_id()
+            plug_name = plugin.get_name()
+            print(f'#{count} - {plug_name} ({plug_id})')
+        print()
+
     app.config[APP_KEY_SLC] = ShortLivedCache()
 
     # Configure processors
@@ -134,7 +182,7 @@ if __name__ == '__main__':
 
         # Query the AppProperties table for values
         app.config[PROPERTY_SERVER_SECRET_KEY] = get_secret_key()
-        app.config[PROPERTY_SERVER_PORT_KEY] = get_server_port()
+        app.config[PROPERTY_SERVER_PORT_KEY] = get_server_port(args.port_override)
         app.config[PROPERTY_SERVER_HOST_KEY] = get_server_host()
         app.config[PROPERTY_SERVER_AUTH_TIMEOUT_KEY] = get_auth_timeout()
 
@@ -185,4 +233,5 @@ if __name__ == '__main__':
         if not is_private_ip(local_ip):
             print('Error: IP Address is not a local address, do not expose this server to the Internet!!!!')
 
-    app.run(host=app.config[PROPERTY_SERVER_HOST_KEY], port=app.config[PROPERTY_SERVER_PORT_KEY], debug=False)
+    if not args.skip_run:
+        app.run(host=app.config[PROPERTY_SERVER_HOST_KEY], port=app.config[PROPERTY_SERVER_PORT_KEY], debug=False)

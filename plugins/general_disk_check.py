@@ -3,7 +3,6 @@ import logging
 
 import psutil
 from flask_sqlalchemy.session import Session
-from sqlalchemy.testing.plugin.plugin_base import logging
 
 from feature_flags import MANAGE_APP
 from plugin_system import ActionPlugin

@@ -3,7 +3,6 @@ from typing import Optional
 
 from flask import Blueprint, request, current_app
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.testing.plugin.plugin_base import logging
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from app_queries import update_user_features, update_user_limit, update_user_group, find_all_hard_sessions, \

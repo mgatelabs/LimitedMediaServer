@@ -32,15 +32,19 @@ def get_secret_key() -> str:
     return "1234567890DEMO"
 
 
-def get_server_port() -> int:
+def get_server_port(override_value: int = 0) -> int:
     """
     Get the server port number from the database.
     """
     try:
+        # See if a valid override was passed in
+        if 0 < override_value < 65535:
+            return override_value
+
         value = _get_attr_value(PROPERTY_SERVER_PORT_KEY)
         if is_not_blank(value):
             v = int(value)
-            if 0 <= v <= 65535:
+            if 0 < v < 65535:
                 return v
     except ValueError:
         pass
