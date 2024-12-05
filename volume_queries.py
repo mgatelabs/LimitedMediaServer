@@ -201,7 +201,7 @@ def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Op
     else:
         query = db.session.query(Book)
 
-    if max_rating > 0:
+    if max_rating < 200:
         query = query.filter(Book.rating <= max_rating)
 
     if is_not_blank(filter_text):
@@ -244,7 +244,7 @@ def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_t
         (vp_alias.timestamp == latest_volume_progress.c.latest_timestamp)
     )
 
-    if max_rating > 0:
+    if max_rating < 200:
         query = query.filter(Book.rating <= max_rating)
 
     if is_not_blank(filter_text):

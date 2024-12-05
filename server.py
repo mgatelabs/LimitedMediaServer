@@ -1,6 +1,7 @@
 import argparse
 
 from flask import Flask
+import logging
 
 from app_properties import AppPropertyDefinition
 from app_queries import get_secret_key, get_server_port, get_server_host, get_auth_timeout, check_and_insert_property, \
@@ -29,7 +30,7 @@ from volume_utils import get_processors
 
 # Initialize Flask app
 app = Flask(__name__)
-
+app.logger.setLevel(logging.ERROR)
 
 @app.after_request
 def add_csp_headers(response):
