@@ -554,7 +554,7 @@ Replace the contents with this example configuration:
 server {
     listen 443 ssl;
     server_name your_domain.com;
-
+    LimitRequestBody 1610612736 #1.6 gigs
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
 
