@@ -54,6 +54,7 @@ def add_csp_headers(response):
 app.config['DATABASE_URI'] = 'sqlite:///instance/localmediaserver.db'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///localmediaserver.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH'] = 1610612736
 
 # Initialize the database
 init_db(app)

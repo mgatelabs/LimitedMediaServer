@@ -1,23 +1,23 @@
 import argparse
+import logging
 import mimetypes
 import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-import logging
 
 from flask_sqlalchemy.session import Session
 
 from db import MediaFile
 from feature_flags import MANAGE_MEDIA
-from file_utils import create_random_folder, temporary_folder
-from media_queries import find_file_by_id, insert_file, find_files_in_folder
-from media_utils import get_folder_rating_checker, get_folder_group_checker, get_data_for_mediafile, get_file_by_user, \
-    get_folder_by_user, describe_file_size_change
 from ffmpeg_utils import encode_video, FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
     get_ffmpeg_f_argument_from_mimetype
+from file_utils import temporary_folder
+from media_queries import insert_file, find_files_in_folder
+from media_utils import get_data_for_mediafile, get_file_by_user, \
+    get_folder_by_user, describe_file_size_change
 from plugin_system import ActionMediaFilePlugin
-from text_utils import is_not_blank, is_guid, is_blank, clean_string
+from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 
 

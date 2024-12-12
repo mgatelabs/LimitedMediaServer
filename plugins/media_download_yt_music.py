@@ -94,7 +94,7 @@ class DownloadMusicFromYtTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return DownloadYtMusic("DL YT Music", 'Downloading music from YT', args['folder_id'], args['url'],
+        return DownloadYtMusic("DL YT Music", 'Downloading music from YT ' + args['url'], args['folder_id'], args['url'],
                                parse_boolean(args['split_chapters']),
                                args['dest'],
                                self.primary_path,

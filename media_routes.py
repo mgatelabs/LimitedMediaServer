@@ -926,7 +926,7 @@ def serve_media_thumbnail(user_details, folder_id):
     else:
 
         # Create a response
-        response = make_response(send_from_directory('.', '404.png'))
+        response = make_response(send_from_directory('.', '404.png'), 404)
 
         # Set cache control headers
         expires_at = datetime.now() + timedelta(minutes=5)

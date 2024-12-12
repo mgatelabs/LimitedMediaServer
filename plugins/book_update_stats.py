@@ -128,7 +128,7 @@ class UpdateSingleCache(ActionBookPlugin):
 
     def create_task(self, db_session: Session, args):
         series_id = args['series_id']
-        return UpdateSingleJson("Update", f'Update {series_id} Definition', series_id,
+        return UpdateSingleBookStats("Update", f'Update {series_id} Definition', series_id,
                                 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
@@ -338,7 +338,7 @@ class UpdateAllJson(TaskWrapper):
         generate_book_definitions(self, None, self.book_folder, self.clean_previews, db_session)
 
 
-class UpdateSingleJson(TaskWrapper):
+class UpdateSingleBookStats(TaskWrapper):
     """
     Update a single book's JSON file
     """

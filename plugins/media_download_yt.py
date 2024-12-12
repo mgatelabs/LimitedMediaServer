@@ -4,17 +4,18 @@ import os.path
 import shutil
 import subprocess
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs
 
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
-from file_utils import create_random_folder, temporary_folder
+from file_utils import temporary_folder
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
 from plugin_system import ActionMediaFolderPlugin, plugin_string_arg
-from text_utils import is_not_blank, is_blank
+from text_utils import is_blank
 from thread_utils import TaskWrapper
-from urllib.parse import urlparse, parse_qs
+
 
 def extract_query_variable(url, variable_name):
     parsed_url = urlparse(url)
@@ -91,7 +92,7 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return DownloadYt("Download YT", 'Downloading from YT', args['folder_id'], args['url'], args['dest'], self.primary_path,
+        return DownloadYt("Download YT", 'Downloading from YT ' + args['url'], args['folder_id'], args['url'], args['dest'], self.primary_path,
                           self.archive_path, self.temp_path)
 
 

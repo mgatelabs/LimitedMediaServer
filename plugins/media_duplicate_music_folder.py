@@ -1,12 +1,9 @@
 import argparse
-import os
-import os.path
 
-from flask import session
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
-from media_queries import find_folder_by_id, find_files_in_folder, find_files_in_folder_with_mime, \
+from media_queries import find_folder_by_id, find_files_in_folder_with_mime, \
     find_files_in_two_folders_with_mime
 from media_utils import clean_files_for_mediafile
 from plugin_system import ActionMediaFolderPlugin, plugin_select_arg, plugin_select_values, \
@@ -58,7 +55,7 @@ class CleanFolderTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return CleanFolder("De-Dupe", 'De-Duplicate Music Folder', args['folder_id'], args['other_folder_id'], args['mode'], self.primary_path, self.archive_path)
+        return CleanFolder("De-Dupe", 'De-Duplicate Music Folder ' + args['folder_id'], args['folder_id'], args['other_folder_id'], args['mode'], self.primary_path, self.archive_path)
 
 
 class CleanFolder(TaskWrapper):

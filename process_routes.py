@@ -79,6 +79,8 @@ def add_plugin_task(user_details):
         task_args = json_data['args']
         plugins = current_app.config['PLUGINS']['all']
 
+        duplicate_check = True
+
         logging_level = 20
         if '_logging_level' in task_args:
             logging_level = int(task_args['_logging_level'])
@@ -88,11 +90,20 @@ def add_plugin_task(user_details):
                 # fallback
                 logging_level = 20
 
+        if '_duplicate_checking' in task_args:
+            duplicate_check = (task_args['_duplicate_checking']) == 'y'
+
         # Get the current application context
         app = current_app._get_current_object()
 
-        def task_content(tw, a):
+        def task_content(tw: TaskWrapper, a):
+            # Run the one task
             execute_task(tw, a)
+            # Let one task spawn off another
+            while tw.post_task is not None:
+                task_manager.add_task(tw.post_task)
+
+
 
         for plugin in plugins:
             if plugin.get_action_id() == task_id:
@@ -111,7 +122,7 @@ def add_plugin_task(user_details):
                             skip_count = 0
                             add_count = 0
                             for task in task_wrapper:
-                                if task_manager.has_task(task.name, task.description):
+                                if duplicate_check and task_manager.has_task(task.name, task.description):
                                     skip_count = skip_count + 1
                                 else:
                                     add_count = add_count + 1
@@ -124,7 +135,7 @@ def add_plugin_task(user_details):
 
                             return generate_success_response(f'Tasks Added: ({add_count}), Skipped: ({skip_count})')
                         else:
-                            if task_manager.has_task(task_wrapper.name, task_wrapper.description):
+                            if duplicate_check and task_manager.has_task(task_wrapper.name, task_wrapper.description):
                                 return generate_failure_response('Error: Task is already in the Queue')
 
                             # Execute the task asynchronously

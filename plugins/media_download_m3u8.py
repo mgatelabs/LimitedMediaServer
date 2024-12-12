@@ -7,12 +7,12 @@ from datetime import datetime
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
-from file_utils import create_random_folder, is_valid_url, temporary_folder
+from file_utils import is_valid_url, temporary_folder
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
-from plugin_system import ActionMediaFolderPlugin, plugin_string_arg, plugin_url_arg, plugin_select_arg, \
-    plugin_select_values, plugin_filename_arg, PLUGIN_VALUES_Y_N
-from text_utils import is_not_blank, is_blank
+from plugin_system import ActionMediaFolderPlugin, plugin_url_arg, plugin_select_arg, \
+    plugin_select_values, plugin_filename_arg
+from text_utils import is_blank
 from thread_utils import TaskWrapper
 
 
@@ -88,7 +88,7 @@ class DownloadFromM3u8Task(ActionMediaFolderPlugin):
 
     def create_task(self, db_session: Session, args):
         filename = args['filename']
-        return DownloadM3u8("Download M3u8", f'Downloading {filename} from M3u8 source', args['folder_id'], filename, args['url'],
+        return DownloadM3u8("Download M3u8", f'Downloading {filename} from M3u8 to folder ' + args['folder_id'], args['folder_id'], filename, args['url'],
                             args['dest'], self.primary_path,
                             self.archive_path, self.temp_path)
 

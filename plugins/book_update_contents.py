@@ -10,7 +10,7 @@ from feature_flags import MANAGE_VOLUME
 from plugin_system import ActionPlugin, ActionBookPlugin, plugin_long_string_arg
 from plugins.book_update_headers import UpdateVolumeHeader
 from plugins.book_volume_processing import VolumeProcessor
-from text_utils import is_not_blank, is_blank
+from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
 from volume_utils import parse_curl_headers
@@ -116,7 +116,7 @@ class UpdateAllBooksTask(ActionPlugin):
     def process_action_args(self, args: dict[str, any]):
         results = []
 
-        if 'filter' not in args or args['filter'] is None or args['filter'] == '':
+        if 'filter' not in args or args['filter'] is None or is_blank(args['filter']) == '':
             results.append('filter is required')
 
         if 'cleaning' not in args or args['cleaning'] is None or args['cleaning'] == '':
@@ -153,10 +153,13 @@ class UpdateAllBooksTask(ActionPlugin):
         grouped_books = group_books_by_processor(books)
         interleaved_books = interleave_books(grouped_books)
 
+        processor_filter = args['filter']
+
         for book in interleaved_books:
-            results.append(
-                DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder, '*',
-                                 cleaning))
+            if processor_filter == '*' or processor_filter == book.processor:
+                results.append(
+                    DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors, self.book_folder,
+                                     cleaning))
 
         return results
 
@@ -251,7 +254,7 @@ class UpdateSingleBookTask(ActionBookPlugin):
             book = find_book_by_id(book_id, db_session)
             if book is not None:
                 the_book = DownloadBookTask("GetBook", f'Updating: {book.name}', book.id, self.processors,
-                                            self.book_folder, '*', cleaning == 'a')
+                                            self.book_folder, cleaning == 'a')
                 if len(results) == 0:
                     return the_book
                 else:
@@ -261,12 +264,10 @@ class UpdateSingleBookTask(ActionBookPlugin):
 
 
 class DownloadBookTask(TaskWrapper):
-    def __init__(self, name, description, book_id, processors, book_folder: str, processor_filter: str = "*",
-                 clean_all: bool = False):
+    def __init__(self, name, description, book_id, processors, book_folder: str, clean_all: bool = False):
         super().__init__(name, description)
         self.book_id = book_id
         self.processors = processors
-        self.processor_filter = processor_filter
         self.clean_all = clean_all
         self.book_folder = book_folder
 
@@ -282,6 +283,6 @@ class DownloadBookTask(TaskWrapper):
         if book is not None:
             self.info('Found book definition : ' + self.book_id)
             bd = VolumeProcessor(self.processors, self.book_folder, self)
-            bd.process_book(db_session, book, self.token, self.processor_filter, self.clean_all)
+            bd.process_book(db_session, book, self.token, self.clean_all)
         else:
             self.critical('Could not find book: ' + self.book_id)

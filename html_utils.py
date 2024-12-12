@@ -231,6 +231,12 @@ def get_base_url(url):
     base_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
     return base_url
 
+def get_authority_url(url):
+    parsed_url = urlparse(url)
+    # Reassemble the base URL with scheme and domain
+    base_url = f"{parsed_url.netloc}"
+    return base_url
+
 
 def get_headers_when_empty(headers, url, task_wrapper: TaskWrapper, alt_url: str = None):
     if headers is not None:
@@ -294,6 +300,7 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
                     task_wrapper.trace(f'cleaned_referer_url: {get_base_url(referer_url)}')
 
                 headers["referer"] = get_base_url(referer_url)
+                headers["authority"] = get_authority_url(referer_url)
 
                 return headers
             except json.JSONDecodeError:

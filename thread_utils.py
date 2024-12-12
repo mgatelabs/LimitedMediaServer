@@ -39,7 +39,7 @@ class TaskManager:
         with self.lock:
             self.task_list.append(task_wrapper)
 
-    def has_task(self, task_name: str, task_description: str) ->bool:
+    def has_task(self, task_name: str, task_description: str) -> bool:
         """
         Check if there is an item in the QUEUE that already matches and isn't complete
         :param task_name:
@@ -51,7 +51,6 @@ class TaskManager:
                 if task.name == task_name and task.description == task_description and not task.is_finished:
                     return True
         return False
-
 
     def get_all_tasks(self):
         """
@@ -135,6 +134,7 @@ class TaskWrapper(ABC):
         self.start_time = None
         self.end_time = None
         self.user = None
+        self.post_task = None
 
     def mark_start(self):
         self.start_time = datetime.now(timezone.utc)
@@ -182,6 +182,9 @@ class TaskWrapper(ABC):
         current_time = self.end_time or datetime.now(timezone.utc)
         diff = current_time - self.init_time
         return int(diff.total_seconds())
+
+    def run_after(self, task: 'TaskWrapper'):
+        self.post_task = task
 
     def update_logging_level(self, logging_level: int):
         """

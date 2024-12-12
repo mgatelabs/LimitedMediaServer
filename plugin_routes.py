@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app, jsonify
 from auth_utils import shall_authenticate_user
 from common_utils import generate_success_response
-from plugin_system import plugin_select_values, plugin_select_arg
+from plugin_system import plugin_select_values, plugin_select_arg, PLUGIN_VALUES_Y_N
 
 # Create a Blueprint for plugin routes
 plugin_blueprint = Blueprint('plugin', __name__)
@@ -23,6 +23,7 @@ def add_logging_arg(args: list) -> list:
 
     # Append the logging argument to the list
     result.append(plugin_select_arg("Logging Level", "_logging_level", "20", DEFAULT_LOGGING_VALUES))
+    result.append(plugin_select_arg("Prevent Duplicate Tasks", "_duplicate_checking", "y", PLUGIN_VALUES_Y_N))
 
     # Ensure each argument has a description
     for row in result:

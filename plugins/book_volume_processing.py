@@ -41,7 +41,7 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
     if task_wrapper.can_trace():
         task_wrapper.trace(f'Book {book_id}')
 
-    chapters = processor.list_chapters(book)
+    chapters = processor.list_chapters(book, headers)
 
     task_wrapper.info(f'Chapters Found: {len(chapters)}')
 
@@ -178,7 +178,7 @@ class VolumeProcessor:
                 return processor
         return None
 
-    def process_book(self, session: Session, book: Book, token, processor_filter: str = None, clean_all=False):
+    def process_book(self, session: Session, book: Book, token, clean_all=False):
 
         if token is not None and token.should_stop:
             self.task_wrapper.critical('Token is triggered, stopping')
@@ -200,14 +200,10 @@ class VolumeProcessor:
         processor = self.processor_for_id(book_type)
 
         if processor is not None:
-
-            if processor_filter != "*" and processor_filter != processor.processor_id:
-                self.task_wrapper.info('Skipping Processor: ' + book_type)
-            else:
-                self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
-                book_result = _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper,
-                                                self.book_folder,
-                                                clean_all)
+            self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
+            book_result = _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper,
+                                            self.book_folder,
+                                            clean_all)
         else:
             self.task_wrapper.critical('Unknown Processor: ' + book_type)
 

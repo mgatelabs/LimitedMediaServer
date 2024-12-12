@@ -31,7 +31,7 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
         command.extend(['-o', download_file])
 
     if task_wrapper.can_trace():
-        task_wrapper.trace(" ".join(command))
+        task_wrapper.trace("' '".join(command))
 
     try:
 
