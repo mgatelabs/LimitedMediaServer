@@ -18,9 +18,9 @@ class WakeUpPcTask(ActionPlugin):
     """
 
     def __init__(self):
+        super().__init__()
         self.mac = None
         self.prefix_lang_id = 'wakeup'
-        super().__init__()
 
     def get_sort(self):
         return {'id': 'wake_pc', 'sequence': 0}
