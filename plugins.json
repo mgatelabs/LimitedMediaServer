@@ -2016,7 +2016,7 @@
         ],
         "category": "media_folder",
         "standalone": false,
-        "prefix_lang_id": ""
+        "prefix_lang_id": "mediafix"
     },
     {
         "id": "action.move.folder",
