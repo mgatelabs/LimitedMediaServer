@@ -19,6 +19,7 @@ class WakeUpPcTask(ActionPlugin):
 
     def __init__(self):
         self.mac = None
+        self.prefix_lang_id = 'wakeup'
         super().__init__()
 
     def get_sort(self):

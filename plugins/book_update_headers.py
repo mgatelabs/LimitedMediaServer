@@ -16,6 +16,7 @@ class UpdateHeaders(ActionPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'bkuphead'
 
     def get_sort(self):
         return {'id': 'book_workers', 'sequence': 99}

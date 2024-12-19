@@ -391,7 +391,7 @@
         ],
         "category": "book",
         "standalone": true,
-        "prefix_lang_id": ""
+        "prefix_lang_id": "bkuphead"
     },
     {
         "id": "action.book.info",
@@ -867,7 +867,7 @@
         ],
         "category": "utility",
         "standalone": true,
-        "prefix_lang_id": ""
+        "prefix_lang_id": "diskchk"
     },
     {
         "id": "action.consume.folder",

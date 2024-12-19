@@ -16,6 +16,7 @@ class CheckDiskStatus(ActionPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'diskchk'
 
     def get_sort(self):
         return {'id': 'disk', 'sequence': 0}
