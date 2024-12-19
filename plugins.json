@@ -1928,7 +1928,7 @@
         ],
         "category": "media",
         "standalone": true,
-        "prefix_lang_id": ""
+        "prefix_lang_id": "mediafix"
     },
     {
         "id": "action.integrity.folder",

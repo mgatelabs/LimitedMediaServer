@@ -69,6 +69,7 @@ class CheckAllFolderIntegrityTask(ActionMediaPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'mediafix'
 
     def get_sort(self):
         return {'id': 'media_integrity_all', 'sequence': 1}
