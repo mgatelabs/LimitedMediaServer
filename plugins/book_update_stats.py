@@ -7,6 +7,7 @@ from constants import PROPERTY_SERVER_VOLUME_FOLDER
 from date_utils import convert_yyyymmdd_to_date, convert_timestamp_to_datetime
 from feature_flags import MANAGE_VOLUME
 from image_utils import resize_image
+from plugin_methods import plugin_select_arg, plugin_select_values
 from plugin_system import ActionPlugin, ActionBookPlugin
 from text_utils import is_blank
 from thread_utils import TaskWrapper
@@ -21,6 +22,7 @@ class UpdateAllCaches(ActionPlugin):
     def __init__(self):
         super().__init__()
         self.book_folder = ''
+        self.prefix_lang_id = 'bkclnall'
 
     def get_sort(self):
         return {'id': 'books_workers', 'sequence': 3}
@@ -44,16 +46,7 @@ class UpdateAllCaches(ActionPlugin):
         return 'healing'
 
     def get_action_args(self):
-        return [
-            {
-                "name": "Clean Previews",
-                "id": "clean_previews",
-                "type": "select",
-                "default": "n",
-                "description": "Should the preview images be re-created?",
-                "values": [{"id": 'n', "name": 'No'}, {"id": 'y', "name": 'Yes'}]
-            }
-        ]
+        return [plugin_select_arg("Clean Previews", "clean_previews", "n", plugin_select_values('No', 'n', 'Yes', 'y'), "Should the preview images be re-created?", 'bkclnall')]
 
     def process_action_args(self, args):
         return None
@@ -77,6 +70,7 @@ class UpdateSingleCache(ActionBookPlugin):
     def __init__(self):
         super().__init__()
         self.book_folder = ''
+        self.prefix_lang_id = 'bkcln'
 
     def is_book(self):
         return True
@@ -105,14 +99,7 @@ class UpdateSingleCache(ActionBookPlugin):
     def get_action_args(self):
         args = super().get_action_args()
 
-        args.append({
-            "name": "Clean Previews",
-            "id": "clean_previews",
-            "type": "select",
-            "default": "n",
-            "description": "Should the preview images be re-created?",
-            "values": [{"id": 'n', "name": 'No'}, {"id": 'y', "name": 'Yes'}]
-        })
+        args.append(plugin_select_arg("Clean Previews", "clean_previews", "n", plugin_select_values('No', 'n', 'Yes', 'y'), "Should the preview images be re-created?", 'bkclnall'))
 
         return args
 
@@ -127,8 +114,8 @@ class UpdateSingleCache(ActionBookPlugin):
         self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
     def create_task(self, db_session: Session, args):
-        series_id = args['series_id']
-        return UpdateSingleBookStats("Update", f'Update {series_id} Definition', series_id,
+        book_id = args['book_id']
+        return UpdateSingleBookStats("Update", f'Update {book_id} Definition', book_id,
                                 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
@@ -348,6 +335,7 @@ class UpdateSingleBookStats(TaskWrapper):
         self.series_id = series_id
         self.clean_previews = clean_previews
         self.book_folder = book_folder
+        self.ref_book_id = series_id
 
     def run(self, db_session):
         generate_book_definitions(self, self.series_id, self.book_folder, self.clean_previews, db_session)

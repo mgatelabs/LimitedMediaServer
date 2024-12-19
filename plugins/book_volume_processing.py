@@ -90,9 +90,9 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
             skipped_chapters = skipped_chapters + 1
             continue
 
-        task_wrapper.info('Working on Chapter: ' + chapter['chapter'])
+        task_wrapper.debug('Working on Chapter: ' + chapter['chapter'])
 
-        image_list = processor.list_images(book, chapter)
+        image_list = processor.list_images(book, chapter, headers)
 
         if image_list is None:
             task_wrapper.set_failure()
@@ -107,6 +107,12 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
         current_image = 0
 
         for image_info in image_list:
+
+            if headers_required:
+                pre_headers = headers
+                headers = get_headers_when_empty(None, site_url, task_wrapper, chapter['href'])
+                if headers is None:
+                    headers = pre_headers
 
             if 'secure' in image_info and image_info['secure']:
                 headers = get_headers_when_empty(headers, site_url, task_wrapper)

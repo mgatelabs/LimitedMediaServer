@@ -9,13 +9,20 @@ from flask import current_app, request
 
 from common_utils import generate_failure_response
 from constants import PROPERTY_SERVER_SECRET_KEY
+from messages import msg_auth_issue_reason, msg_auth_feature_required
 
 
 class AuthResult:
-    def __init__(self, valid, message=None, data=None):
+    def __init__(self, valid, message=None, data=None, msg:Optional[tuple[str, dict[str, str]]] = None):
         self.valid = valid  # Boolean indicating if the authentication is valid
         self.message = message  # Message describing the result
+        self.msg = msg
         self.data = data  # Additional data related to the authentication
+
+    def getMsgs(self):
+        if self.msg:
+            return [self.msg]
+        return None
 
     def __repr__(self):
         return f"AuthResult(valid={self.valid}, message={self.message}, data={self.data})"
@@ -45,17 +52,17 @@ def _get_auth_status(required_features: int = 0, use_cookie: bool = False) -> Au
             token = None
 
     if not token:
-        return AuthResult(False, 'JWT token is missing', {})
+        return AuthResult(False, 'Token is missing', {}, msg_auth_issue_reason('TOKEN Missing'))
 
     try:
         # Decode the JWT token
         data = jwt.decode(token, skey, algorithms=['HS256'])
 
         if 'username' not in data:
-            return AuthResult(False, 'JWT token is invalid, missing username', {})
+            return AuthResult(False, 'Token is invalid, missing username', {}, msg_auth_issue_reason('Corrupt TOKEN'))
 
         if 'uid' not in data:
-            return AuthResult(False, 'JWT token is invalid, missing uid', {})
+            return AuthResult(False, 'Token is invalid, missing uid', {}, msg_auth_issue_reason('Corrupt TOKEN'))
 
         # Set default values if not present in the token
         if 'features' not in data:
@@ -72,17 +79,17 @@ def _get_auth_status(required_features: int = 0, use_cookie: bool = False) -> Au
 
         # Check if the user has the required features
         if required_features != 0 and (data['features'] & required_features) != required_features:
-            return AuthResult(False, 'User is not allowed to access this resource', {})
+            return AuthResult(False, 'User is not allowed to access this resource', {}, msg_auth_feature_required())
 
         return AuthResult(True, 'OK', data)
 
     except jwt.ExpiredSignatureError:
-        return AuthResult(False, 'Token has expired', {})
+        return AuthResult(False, 'Token has expired', {}, msg_auth_issue_reason('Expired TOKEN'))
     except jwt.InvalidTokenError:
-        return AuthResult(False, 'Token is invalid', {})
+        return AuthResult(False, 'Token is invalid', {}, msg_auth_issue_reason('Invalid TOKEN'))
     except Exception as e:
         logging.exception(e)
-        return AuthResult(False, 'Token is invalid', {})
+        return AuthResult(False, 'Token is invalid', {}, msg_auth_issue_reason('Invalid TOKEN'))
 
 
 def may_authenticate_user(blueprint):
@@ -122,7 +129,7 @@ def shall_authenticate_user(blueprint):
             result = _get_auth_status()
 
             if not result.valid:
-                return generate_failure_response(result.message, 401)
+                return generate_failure_response(result.message, 401, result.getMsgs())
 
             return f(result.data, *args, **kwargs)
 
@@ -145,7 +152,7 @@ def shall_authenticate_user_with_cookie(blueprint):
             result = _get_auth_status(0, True)
 
             if not result.valid:
-                return generate_failure_response(result.message, 401)
+                return generate_failure_response(result.message, 401, result.getMsgs())
 
             return f(result.data, *args, **kwargs)
 
@@ -169,7 +176,7 @@ def feature_required(blueprint, required_features: int):
             result = _get_auth_status(required_features)
 
             if not result.valid:
-                return generate_failure_response(result.message, 401)
+                return generate_failure_response(result.message, 401, result.getMsgs())
 
             return f(result.data, *args, **kwargs)
 
@@ -193,7 +200,7 @@ def feature_required_with_cookie(blueprint, required_features: int):
             result = _get_auth_status(required_features, True)
 
             if not result.valid:
-                return generate_failure_response(result.message, 401)
+                return generate_failure_response(result.message, 401, result.getMsgs())
 
             return f(result.data, *args, **kwargs)
 
@@ -217,7 +224,7 @@ def feature_required_silent(blueprint, required_features: int):
             result = _get_auth_status(required_features)
 
             if not result.valid:
-                return generate_failure_response(result.message, 401)
+                return generate_failure_response(result.message, 401, result.getMsgs())
 
             return f(*args, **kwargs)
 

@@ -12,6 +12,8 @@ from common_utils import generate_failure_response, generate_success_response
 from constants import PROPERTY_DEFINITIONS
 from db import db, User, AppProperties, UserLimit, UserGroup, UserHardSession
 from feature_flags import MANAGE_APP, SUPER_ADMIN, HARD_SESSIONS
+from messages import msg_invalid_parameter, msg_action_failed_missing, msg_missing_parameter, msg_server_error, \
+    msg_operation_complete, msg_action_cancelled_wrong, msg_no_operation, msg_mismatched_parameters
 from number_utils import is_integer
 from property_queries import get_all_properties, get_property
 from text_utils import is_valid_username, clean_string, is_blank, is_not_blank, format_datatime
@@ -66,7 +68,7 @@ def get_user_details():
     """
     user_id = clean_string(request.form.get('user_id'))
     if not is_integer(user_id):
-        return generate_failure_response('user_id parameter is not an integer', 400)
+        return generate_failure_response('user_id parameter is not an integer', 400, messages=[msg_invalid_parameter('user_id')])
     user_id = int(user_id)
 
     user = get_user_by_id(user_id)
@@ -78,7 +80,7 @@ def get_user_details():
         limits[new_key] = limit.limit_value
 
     if not user:
-        return generate_failure_response('User not found', 404)
+        return generate_failure_response('User not found', 404, messages=[msg_action_failed_missing()])
 
     user_details = {'id': user.id, 'username': user.username, 'features': user.features, 'group_id': user.user_group_id,
                     'volume_limit': limits['volume_limit'],
@@ -95,13 +97,13 @@ def get_group_details():
     """
     group_id = clean_string(request.form.get('group_id'))
     if not is_integer(group_id):
-        return generate_failure_response('group_id parameter is not an integer', 400)
+        return generate_failure_response('group_id parameter is not an integer', 400, messages=[msg_invalid_parameter('group_id')])
     group_id = int(group_id)
 
     group = get_group_by_id(group_id)
 
     if not group:
-        return generate_failure_response('Group not found', 404)
+        return generate_failure_response('Group not found', 404, messages=[msg_action_failed_missing()])
 
     group_details = {'id': group.id, 'name': group.name, 'description': group.description}
 
@@ -123,21 +125,21 @@ def create_user():
 
     # Validate input parameters
     if is_blank(username):
-        return generate_failure_response('username parameter required', 400)
+        return generate_failure_response('username parameter required', 400, messages=[msg_missing_parameter('username')])
     if is_blank(password):
-        return generate_failure_response('password parameter required', 400)
+        return generate_failure_response('password parameter required', 400, messages=[msg_missing_parameter('password')])
 
     username = username.strip().lower()
     password = password.strip()
 
     if not is_valid_username(username):
-        return generate_failure_response('Username is not in the proper format (A-Z0-9@.)', 400)
+        return generate_failure_response('Username is not in the proper format (A-Z0-9@.)', 400, messages=[msg_invalid_parameter('Username')])
 
     if is_not_blank(group_id) and is_integer(group_id):
         group_id = int(group_id)
         group = get_group_by_id(group_id)
         if group is None:
-            return generate_failure_response('Unknown group', 400)
+            return generate_failure_response('Unknown group', 400, messages=[msg_action_failed_missing()])
     else:
         group_id = None
 
@@ -167,9 +169,9 @@ def create_user():
     except IntegrityError as e:
         logging.exception(e)
         db.session.rollback()
-        return generate_failure_response(f'User {username} already exists or other exception, please see log', 400)
+        return generate_failure_response(f'User {username} already exists or other exception, please see log', 400, messages=[msg_server_error()])
 
-    return generate_success_response(f'User {username} created')
+    return generate_success_response(f'User {username} created', messages=[msg_operation_complete()])
 
 
 @admin_blueprint.route('/new/group', methods=['POST'])
@@ -183,9 +185,9 @@ def create_group():
 
     # Validate input parameters
     if is_blank(name):
-        return generate_failure_response('name parameter required', 400)
+        return generate_failure_response('name parameter required', 400, messages=[msg_missing_parameter('name')])
     if is_blank(description):
-        return generate_failure_response('description parameter required', 400)
+        return generate_failure_response('description parameter required', 400, messages=[msg_missing_parameter('description')])
 
     new_group = UserGroup(name=name, description=description)
 
@@ -196,9 +198,9 @@ def create_group():
     except IntegrityError as e:
         logging.exception(e)
         db.session.rollback()
-        return generate_failure_response(f'Group {name} already exists or other exception, please see log', 400)
+        return generate_failure_response(f'Group {name} already exists or other exception, please see log', 400, messages=[msg_action_cancelled_wrong()])
 
-    return generate_success_response(f'Group {name} created')
+    return generate_success_response(f'Group {name} created', messages=[msg_operation_complete()])
 
 
 @admin_blueprint.route('/remove/user', methods=['POST'])
@@ -209,17 +211,17 @@ def delete_user(user_details):
     """
     user_id = clean_string(request.form.get('user_id'))
     if not is_integer(user_id):
-        return generate_failure_response('user_id parameter is not an integer', 400)
+        return generate_failure_response('user_id parameter is not an integer', 400, messages=[msg_invalid_parameter('user_id')])
     user_id = int(user_id)
 
     current_user_id = user_details['uid']
 
     if int(current_user_id) == user_id:
-        return generate_failure_response('You cannot delete you own account', 400)
+        return generate_failure_response('You cannot delete you own account', 400, messages=[msg_action_cancelled_wrong()])
 
     user = User.query.get(user_id)
     if not user:
-        return generate_failure_response('User not found', 404)
+        return generate_failure_response('User not found', 404, messages=[msg_action_failed_missing()])
 
     db.session.delete(user)
     db.session.commit()
@@ -235,20 +237,20 @@ def delete_group():
     """
     group_id = clean_string(request.form.get('group_id'))
     if not is_integer(group_id):
-        return generate_failure_response('group_id parameter is not an integer', 400)
+        return generate_failure_response('group_id parameter is not an integer', 400, messages=[msg_invalid_parameter('group_id')])
     group_id = int(group_id)
 
     group = UserGroup.query.get(group_id)
     if not group:
-        return generate_failure_response('Group not found', 404)
+        return generate_failure_response('Group not found', 404, messages=[msg_action_failed_missing()])
 
     if count_folders_for_group(group.id) > 0:
-        return generate_failure_response('Group is still tied to a folder, stopping!', 404)
+        return generate_failure_response('Group is still tied to a folder, stopping!', 404, messages=[msg_action_cancelled_wrong()])
 
     db.session.delete(group)
     db.session.commit()
 
-    return generate_success_response('Group deleted')
+    return generate_success_response('Group deleted', messages=[msg_operation_complete()])
 
 
 @admin_blueprint.route('/update/user/limits', methods=['POST'])
@@ -259,7 +261,7 @@ def update_user_limits():
     """
     user_id = clean_string(request.form.get('user_id'))
     if not is_integer(user_id):
-        return generate_failure_response('user_id parameter is not an integer', 400)
+        return generate_failure_response('user_id parameter is not an integer', 400, messages=[msg_invalid_parameter('user_id')])
     user_id = int(user_id)
 
     features = clean_string(request.form.get('features'))
@@ -271,7 +273,7 @@ def update_user_limits():
         group_id = int(group_id)
         group = get_group_by_id(group_id)
         if group is None:
-            return generate_failure_response('Unknown group', 400)
+            return generate_failure_response('Unknown group', 400, messages=[msg_action_failed_missing()])
     else:
         group_id = None
 
@@ -282,7 +284,7 @@ def update_user_limits():
 
     user = User.query.get(user_id)
     if not user:
-        return generate_failure_response('User not found', 404)
+        return generate_failure_response('User not found', 404, messages=[msg_action_failed_missing()])
 
     update_needed = False
 
@@ -294,11 +296,11 @@ def update_user_limits():
 
     if update_needed:
         db.session.commit()
-        return generate_success_response('User limits updated')
+        return generate_success_response('User limits updated', messages=[msg_operation_complete()])
     else:
         db.session.rollback()
 
-    return generate_success_response('No Change in Limits')
+    return generate_success_response('No Change in Limits', messages=[msg_no_operation()])
 
 
 @admin_blueprint.route('/update/user/password', methods=['POST'])
@@ -309,22 +311,22 @@ def change_password():
     """
     user_id = clean_string(request.form.get('user_id'))
     if not is_integer(user_id):
-        return generate_failure_response('user_id parameter is not an integer', 400)
+        return generate_failure_response('user_id parameter is not an integer', 400, messages=[msg_missing_parameter('user_id')])
     user_id = int(user_id)
 
     new_password = clean_string(request.form.get('new_password'))
 
     if is_blank(new_password):
-        return generate_failure_response('new_password parameter is required', 400)
+        return generate_failure_response('new_password parameter is required', 400, messages=[msg_missing_parameter('new_password')])
 
     user = get_user_by_id(user_id)
     if not user:
-        return generate_failure_response(f'User {user_id} not found', 404)
+        return generate_failure_response(f'User {user_id} not found', 404, messages=[msg_action_failed_missing()])
 
     user.password = generate_password_hash(new_password)
     db.session.commit()
 
-    return generate_success_response(f'Password for {user.username} has been changed')
+    return generate_success_response(f'Password for {user.username} has been changed', messages=[msg_operation_complete()])
 
 
 @admin_blueprint.route('/update/my/password', methods=['POST'])
@@ -338,25 +340,25 @@ def change_my_password(user_details):
     new_password = clean_string(request.form.get('new_password'))
 
     if is_blank(old_password):
-        return generate_failure_response('old_password parameter is required', 400)
+        return generate_failure_response('old_password parameter is required', 400, messages=[msg_missing_parameter('old_password')])
 
     if is_blank(new_password):
-        return generate_failure_response('new_password parameter is required', 400)
+        return generate_failure_response('new_password parameter is required', 400, messages=[msg_missing_parameter('new_password')])
 
     if is_blank(new_password):
-        return generate_failure_response('new_password can not match old_password parameter', 400)
+        return generate_failure_response('new_password can not match old_password parameter', 400, messages=[msg_invalid_parameter('new_password')])
 
     user = get_user_by_id(user_id)
     if not user:
         return generate_failure_response('User record found', 404)
 
     if not check_password_hash(user.password, old_password):
-        return generate_failure_response('old_password does not match current password', 400)
+        return generate_failure_response('old_password does not match current password', 400, messages=[msg_mismatched_parameters('old_password', 'password')])
 
     user.password = generate_password_hash(new_password)
     db.session.commit()
 
-    return generate_success_response('Your password has been changed')
+    return generate_success_response('Your password has been changed', messages=[msg_operation_complete()])
 
 
 @admin_blueprint.route('/list/properties', methods=['POST'])
@@ -379,11 +381,11 @@ def get_property_details():
     prop_id = clean_string(request.form.get('property_id'))
 
     if is_blank(prop_id):
-        return generate_failure_response('property_id parameter is required', 400)
+        return generate_failure_response('property_id parameter is required', 400, messages=[msg_missing_parameter('property_id')])
 
     prop = get_property(prop_id)
     if not prop:
-        return generate_failure_response(f'Property {prop_id} not found', 404)
+        return generate_failure_response(f'Property {prop_id} not found', 404, messages=[msg_action_failed_missing()])
 
     property_details = {'id': prop.id, 'value': prop.value, 'comment': prop.comment}
 
@@ -400,14 +402,14 @@ def update_property():
     value = clean_string(request.form.get('value'))
 
     if is_blank(prop_id):
-        return generate_failure_response('property_id parameter is required', 400)
+        return generate_failure_response('property_id parameter is required', 400, messages=[msg_missing_parameter('property_id')])
 
     if is_blank(value):
-        return generate_failure_response('value parameter is required', 400)
+        return generate_failure_response('value parameter is required', 400, messages=[msg_missing_parameter('value')])
 
     prop = AppProperties.query.get(prop_id)
     if not prop:
-        return generate_failure_response(f'Property {prop} not found', 404)
+        return generate_failure_response(f'Property {prop} not found', 404, messages=[msg_action_failed_missing()])
 
     # Verify the value against the property definition
     for definition in current_app.config[PROPERTY_DEFINITIONS]:
@@ -419,9 +421,9 @@ def update_property():
             prop.value = value
             db.session.commit()
 
-            return generate_success_response(f'Property {prop} value updated')
+            return generate_success_response(f'Property {prop} value updated', messages=[msg_operation_complete()])
 
-    return generate_failure_response('Property definition not found', 400)
+    return generate_failure_response('Property definition not found', 400, messages=[msg_action_failed_missing()])
 
 
 # Common Validators
@@ -430,31 +432,31 @@ def limit_validator(features: str, book_limit: str, media_limit: str) -> Optiona
     Check if the limits are valid.
     """
     if is_blank(features):
-        return generate_failure_response('features parameter required', 400)
+        return generate_failure_response('features parameter required', 400, messages=[msg_missing_parameter('features')])
     if is_blank(book_limit):
-        return generate_failure_response('book_limit parameter required', 400)
+        return generate_failure_response('book_limit parameter required', 400, messages=[msg_missing_parameter('book_limit')])
     if is_blank(media_limit):
-        return generate_failure_response('media_limit parameter required', 400)
+        return generate_failure_response('media_limit parameter required', 400, messages=[msg_missing_parameter('media_limit')])
 
     if not is_integer(features):
-        return generate_failure_response(f'features parameter ({features}) is not an integer', 400)
+        return generate_failure_response(f'features parameter ({features}) is not an integer', 400, messages=[msg_invalid_parameter('features')])
     if not is_integer(book_limit):
-        return generate_failure_response(f'book_limit parameter ({book_limit}) is not an integer', 400)
+        return generate_failure_response(f'book_limit parameter ({book_limit}) is not an integer', 400, messages=[msg_invalid_parameter('book_limit')])
     if not is_integer(media_limit):
-        return generate_failure_response(f'media_limit parameter ({media_limit}) is not an integer', 400)
+        return generate_failure_response(f'media_limit parameter ({media_limit}) is not an integer', 400, messages=[msg_invalid_parameter('media_limit')])
 
     features = int(features)
     book_limit = int(book_limit)
     media_limit = int(media_limit)
 
     if not (0 <= features <= SUPER_ADMIN):
-        return generate_failure_response('invalid features parameter value', 400)
+        return generate_failure_response('invalid features parameter value', 400, 400, messages=[msg_invalid_parameter('features')])
 
     if not (0 <= book_limit <= 200):
-        return generate_failure_response('invalid book_limit parameter value', 400)
+        return generate_failure_response('invalid book_limit parameter value', 400, 400, messages=[msg_invalid_parameter('book_limit')])
 
     if not (0 <= media_limit <= 200):
-        return generate_failure_response('invalid media_limit parameter value', 400)
+        return generate_failure_response('invalid media_limit parameter value', 400, 400, messages=[msg_invalid_parameter('media_limit')])
 
     return None
 
@@ -480,17 +482,17 @@ def delete_hard_session():
     """
     session_id = clean_string(request.form.get('session_id'))
     if not is_integer(session_id):
-        return generate_failure_response('session_id parameter is not an integer', 400)
+        return generate_failure_response('session_id parameter is not an integer', 400, messages=[msg_invalid_parameter('session_id')])
     session_id = int(session_id)
 
     hard_session = UserHardSession.query.get(session_id)
     if not hard_session:
-        return generate_failure_response('Hard Session not found', 404)
+        return generate_failure_response('Hard Session not found', 404, messages=[msg_action_failed_missing()])
 
     db.session.delete(hard_session)
     db.session.commit()
 
-    return generate_success_response('Hard Session deleted')
+    return generate_success_response('Hard Session deleted', messages=[msg_operation_complete()])
 
 
 @admin_blueprint.route('/list/my/hard_sessions', methods=['POST'])
@@ -514,17 +516,17 @@ def delete_my_hard_session(user_details):
     """
     session_id = clean_string(request.form.get('session_id'))
     if not is_integer(session_id):
-        return generate_failure_response('session_id parameter is not an integer', 400)
+        return generate_failure_response('session_id parameter is not an integer', 400, messages=[msg_invalid_parameter('session_id')])
     session_id = int(session_id)
 
     hard_session = UserHardSession.query.get(session_id)
     if not hard_session:
-        return generate_failure_response('Hard Session not found', 404)
+        return generate_failure_response('Hard Session not found', 404, messages=[msg_action_failed_missing()])
 
     if hard_session.useid != get_uid(user_details):
-        return generate_failure_response('Hard Session is not owned by you', 401)
+        return generate_failure_response('Hard Session is not owned by you', 401, messages=[msg_action_cancelled_wrong()])
 
     db.session.delete(hard_session)
     db.session.commit()
 
-    return generate_success_response('Hard Session deleted')
+    return generate_success_response('Hard Session deleted', messages=[msg_operation_complete()])

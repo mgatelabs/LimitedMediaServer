@@ -2,6 +2,7 @@ import argparse
 
 from flask import Flask
 import logging
+import json
 
 from app_properties import AppPropertyDefinition
 from app_queries import get_secret_key, get_server_port, get_server_host, get_auth_timeout, check_and_insert_property, \
@@ -72,6 +73,11 @@ if __name__ == '__main__':
         '--list-plugins',
         action='store_true',
         help="Set to True to list plugins. Default is False."
+    )
+    parser.add_argument(
+        '--dump-plugins',
+        action='store_true',
+        help="Set to True to dump plugin information to plugin.json. Default is False."
     )
     parser.add_argument(
         '--list-processors',
@@ -154,6 +160,15 @@ if __name__ == '__main__':
             plug_name = plugin.get_action_name()
             print(f'#{count} - {plug_name} ({plug_id})')
         print()
+
+    if args.dump_plugins:
+        print('---------------------------')
+        print('-Dumping Plugins')
+        plugin_json = []
+        for plugin in plugins['all']:
+            plugin_json.append(plugin.to_json())
+        with open('plugins.json', 'w') as file:
+            json.dump(plugin_json, file, indent=4)
 
     if args.list_processors:
         print('---------------------------')

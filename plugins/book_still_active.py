@@ -1,12 +1,12 @@
 import argparse
-import random
-from itertools import cycle
+import platform
 
 from flask_sqlalchemy.session import Session
 
 from constants import PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_PROCESSORS
 from db import Book
 from feature_flags import MANAGE_VOLUME
+from plugin_methods import plugin_select_arg
 from plugin_system import ActionPlugin, ActionBookPlugin
 from plugins.book_update_contents import group_books_by_processor, interleave_books
 from plugins.book_volume_processing import VolumeProcessor
@@ -22,6 +22,7 @@ class CheckAllStatusTask(ActionPlugin):
     def __init__(self):
         super().__init__()
         self.processors = []
+        self.prefix_lang_id = 'bkact'
 
     def get_sort(self):
         return {'id': 'books_still_active', 'sequence': 0}
@@ -54,14 +55,11 @@ class CheckAllStatusTask(ActionPlugin):
         for processor in self.processors:
             values.append({"id": processor.processor_id, "name": processor.processor_name})
 
-        result = [{
-            "name": "FILTER",
-            "id": "filter",
-            "type": "select",
-            "default": "*",
-            "description": "When not *, only Processors that match will execute.",
-            "values": values
-        }]
+        result = []
+
+        result.append(
+            plugin_select_arg('Filter', 'filter', '*', values, "When not *, only Processors that match will execute.",
+                              'book'))
 
         return result
 
@@ -75,6 +73,9 @@ class CheckAllStatusTask(ActionPlugin):
             return results
 
         return None
+
+    def is_ready(self):
+        return platform.system() == 'Linux'
 
     def absorb_config(self, config):
         self.processors = config[APP_KEY_PROCESSORS]
@@ -153,7 +154,7 @@ class UpdateSingleStatusTask(ActionBookPlugin):
 
     def create_task(self, db_session: Session, args):
 
-        book_id = args['series_id']
+        book_id = args['book_id']
         results = []
 
         if is_not_blank(book_id):

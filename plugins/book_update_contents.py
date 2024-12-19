@@ -1,4 +1,5 @@
 import argparse
+import platform
 import random
 from itertools import cycle
 
@@ -7,10 +8,11 @@ from flask_sqlalchemy.session import Session
 from constants import PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_PROCESSORS
 from db import Book
 from feature_flags import MANAGE_VOLUME
-from plugin_system import ActionPlugin, ActionBookPlugin, plugin_long_string_arg
+from plugin_methods import plugin_long_string_arg, plugin_select_arg, plugin_select_values
+from plugin_system import ActionPlugin, ActionBookPlugin
 from plugins.book_update_headers import UpdateVolumeHeader
 from plugins.book_volume_processing import VolumeProcessor
-from text_utils import is_not_blank, is_blank, clean_string
+from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
 from volume_utils import parse_curl_headers
@@ -62,6 +64,7 @@ class UpdateAllBooksTask(ActionPlugin):
         super().__init__()
         self.processors = []
         self.book_folder = ''
+        self.prefix_lang_id = 'bkucall'
 
     def get_sort(self):
         return {'id': 'books_workers', 'sequence': 0}
@@ -94,22 +97,23 @@ class UpdateAllBooksTask(ActionPlugin):
         for processor in self.processors:
             values.append({"id": processor.processor_id, "name": processor.processor_name})
 
-        result = [{
-            "name": "FILTER",
-            "id": "filter",
-            "type": "select",
-            "default": "*",
-            "description": "When not *, only Processors that match will execute.",
-            "values": values
-        }, {
-            "name": "Cleaning",
-            "id": "cleaning",
-            "type": "select",
-            "default": "n",
-            "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
-            "values": [{"id": 'n', "name": 'New Chapters'}, {"id": 'a', "name": 'All Chapters'}]
-        }, plugin_long_string_arg('Headers', 'headers',
-                                  'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.')]
+        result = super().get_action_args()
+
+        result.append(plugin_select_arg('Filter', 'filter', '*',values,"When not *, only Processors that match will execute.", 'book'))
+
+        result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
+                                            plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
+                                            "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                                            'com'))
+
+
+        result.append(plugin_long_string_arg('Headers', 'headers',
+                                                     'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.', 'com'))
+
+        result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
+                                            plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
+                                            "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                                            'com'))
 
         return result
 
@@ -134,6 +138,9 @@ class UpdateAllBooksTask(ActionPlugin):
             return results
 
         return None
+
+    def is_ready(self):
+        return platform.system() == 'Linux'
 
     def absorb_config(self, config):
         self.processors = config[APP_KEY_PROCESSORS]
@@ -173,6 +180,7 @@ class UpdateSingleBookTask(ActionBookPlugin):
         super().__init__()
         self.processors = []
         self.book_folder = ''
+        self.prefix_lang_id = 'bkuc'
 
     def is_book(self):
         return True
@@ -202,16 +210,14 @@ class UpdateSingleBookTask(ActionBookPlugin):
 
         result = super().get_action_args()
 
-        result.append({
-            "name": "Cleaning",
-            "id": "cleaning",
-            "type": "select",
-            "default": "n",
-            "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
-            "values": [{"id": 'n', "name": 'New Chapters'}, {"id": 'a', "name": 'All Chapters'}]
-        })
+        result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
+                                        plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
+                                        "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                                        'com'))
+
         result.append(plugin_long_string_arg('Headers', 'headers',
-                                  'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.'))
+                                             'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.',
+                                             'com'))
 
         return result
 
@@ -241,9 +247,12 @@ class UpdateSingleBookTask(ActionBookPlugin):
     def get_feature_flags(self):
         return MANAGE_VOLUME
 
+    def is_ready(self):
+        return platform.system() == 'Linux'
+
     def create_task(self, db_session: Session, args):
 
-        book_id = args['series_id']
+        book_id = args['book_id']
         cleaning = (args['cleaning'] == 'a')
         results = []
 
@@ -270,6 +279,7 @@ class DownloadBookTask(TaskWrapper):
         self.processors = processors
         self.clean_all = clean_all
         self.book_folder = book_folder
+        self.ref_book_id = book_id
 
     def run(self, db_session: Session):
 

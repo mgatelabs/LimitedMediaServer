@@ -5,7 +5,8 @@ from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
 from media_utils import get_folder_by_user
-from plugin_system import ActionMediaFolderPlugin, plugin_media_folder_chooser_move_folder_arg
+from plugin_system import ActionMediaFolderPlugin
+from plugin_methods import plugin_media_folder_chooser_move_folder_arg
 from text_utils import is_not_blank
 from thread_utils import TaskWrapper
 

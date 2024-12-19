@@ -4,6 +4,7 @@ import threading
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from typing import Tuple, Any
 
 
 def get_caller_info():
@@ -52,7 +53,7 @@ class TaskManager:
                     return True
         return False
 
-    def get_all_tasks(self):
+    def get_all_tasks(self) -> tuple[type['TaskWrapper'], ...]:
         """
         Get all tasks in the task list.
 
@@ -135,6 +136,8 @@ class TaskWrapper(ABC):
         self.end_time = None
         self.user = None
         self.post_task = None
+        self.ref_book_id = ''
+        self.ref_folder_id = ''
 
     def mark_start(self):
         self.start_time = datetime.now(timezone.utc)

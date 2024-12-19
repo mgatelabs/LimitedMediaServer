@@ -3,10 +3,11 @@ import argparse
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_APP
-from plugin_system import ActionPlugin, plugin_long_string_arg
+from plugin_system import ActionPlugin
+from plugin_methods import plugin_long_string_arg
 from thread_utils import TaskWrapper
 from volume_utils import parse_curl_headers, save_headers_to_json
-
+import platform
 
 class UpdateHeaders(ActionPlugin):
     """
@@ -39,7 +40,7 @@ class UpdateHeaders(ActionPlugin):
 
     def get_action_args(self):
         return [plugin_long_string_arg('Headers', 'headers',
-                                       'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.')]
+                                       'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.', 'com')]
 
     def process_action_args(self, args):
         results = []
@@ -59,6 +60,9 @@ class UpdateHeaders(ActionPlugin):
 
     def get_category(self):
         return 'book'
+
+    def is_ready(self):
+        return platform.system() == 'Linux'
 
     def create_task(self, db_session: Session, args):
         return UpdateVolumeHeader(args['headers'])

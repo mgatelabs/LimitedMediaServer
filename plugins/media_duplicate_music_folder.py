@@ -6,8 +6,8 @@ from feature_flags import MANAGE_MEDIA
 from media_queries import find_folder_by_id, find_files_in_folder_with_mime, \
     find_files_in_two_folders_with_mime
 from media_utils import clean_files_for_mediafile
-from plugin_system import ActionMediaFolderPlugin, plugin_select_arg, plugin_select_values, \
-    plugin_media_folder_chooser_folder_arg
+from plugin_system import ActionMediaFolderPlugin
+from plugin_methods import plugin_select_arg, plugin_select_values, plugin_media_folder_chooser_folder_arg
 from text_utils import is_blank, remove_start_digits_pattern, clean_string, is_not_blank
 from thread_utils import TaskWrapper
 

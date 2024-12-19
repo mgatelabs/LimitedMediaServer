@@ -299,7 +299,7 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
                     task_wrapper.trace(f'referer_url: {referer_url}')
                     task_wrapper.trace(f'cleaned_referer_url: {get_base_url(referer_url)}')
 
-                headers["referer"] = get_base_url(referer_url)
+                headers["referer"] = referer_url
                 headers["authority"] = get_authority_url(referer_url)
 
                 return headers
@@ -311,3 +311,4 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
         task_wrapper.critical(f"File headers.json was not modified within the last 2 hours.")
         task_wrapper.set_failure(True)
         return None
+

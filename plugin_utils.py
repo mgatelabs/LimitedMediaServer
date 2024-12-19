@@ -1,5 +1,4 @@
 import importlib
-import os
 import pkgutil
 
 from plugin_system import ActionSeriesPlugin, ActionBookPlugin, ActionPlugin, ActionMediaFolderPlugin, \
@@ -33,3 +32,5 @@ def get_plugins(plugin_dir):
                     all_plugins.append(plugin_instance)
 
     return {'all': sorted(all_plugins, key=custom_plugin_sort_key)}
+
+

@@ -1,0 +1,2567 @@
+[
+    {
+        "id": "action.book.status",
+        "icon": "toggle_on",
+        "name": "Check Book Status",
+        "args": [
+            {
+                "name": "Book ID",
+                "id": "book_id",
+                "type": "string",
+                "description": "The Book to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.book.tags",
+        "icon": "style",
+        "name": "Update Tags",
+        "args": [
+            {
+                "name": "Book ID",
+                "id": "book_id",
+                "type": "string",
+                "description": "The Book to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": false,
+        "prefix_lang_id": "bktagall"
+    },
+    {
+        "id": "action.book.download",
+        "icon": "download",
+        "name": "Download Book",
+        "args": [
+            {
+                "name": "Book ID",
+                "id": "book_id",
+                "type": "string",
+                "description": "The Book to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Cleaning",
+                "id": "cleaning",
+                "type": "select",
+                "default": "n",
+                "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                "values": [
+                    {
+                        "name": "New Chapters",
+                        "id": "n"
+                    },
+                    {
+                        "name": "All Chapters",
+                        "id": "a"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Headers",
+                "id": "headers",
+                "type": "longstring",
+                "description": "Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": false,
+        "prefix_lang_id": "bkuc"
+    },
+    {
+        "id": "action.book.update.cache",
+        "icon": "healing",
+        "name": "Update Cache",
+        "args": [
+            {
+                "name": "Book ID",
+                "id": "book_id",
+                "type": "string",
+                "description": "The Book to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Clean Previews",
+                "id": "clean_previews",
+                "type": "select",
+                "default": "n",
+                "description": "Should the preview images be re-created?",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "bkclnall"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": false,
+        "prefix_lang_id": "bkcln"
+    },
+    {
+        "id": "action.book.set.header",
+        "icon": "title",
+        "name": "Update Header",
+        "args": [
+            {
+                "name": "Headers",
+                "id": "headers",
+                "type": "longstring",
+                "description": "Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": true,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.book.info",
+        "icon": "bookmarks",
+        "name": "Book Info",
+        "args": [
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": true,
+        "prefix_lang_id": "bkinfo"
+    },
+    {
+        "id": "action.books.status",
+        "icon": "toggle_on",
+        "name": "Check Book Status",
+        "args": [
+            {
+                "name": "Filter",
+                "id": "filter",
+                "type": "select",
+                "default": "*",
+                "description": "When not *, only Processors that match will execute.",
+                "values": [
+                    {
+                        "id": "*",
+                        "name": "All"
+                    }
+                ],
+                "prefix_lang_id": "book"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": true,
+        "prefix_lang_id": "bkact"
+    },
+    {
+        "id": "action.books.tags",
+        "icon": "style",
+        "name": "Update Tags",
+        "args": [
+            {
+                "name": "Filter",
+                "id": "filter",
+                "type": "select",
+                "default": "*",
+                "description": "When not *, only Processors that match will execute.",
+                "values": [
+                    {
+                        "id": "*",
+                        "name": "All"
+                    }
+                ],
+                "prefix_lang_id": "book"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": true,
+        "prefix_lang_id": "bktagall"
+    },
+    {
+        "id": "action.books.download",
+        "icon": "download",
+        "name": "Download All Books",
+        "args": [
+            {
+                "name": "Filter",
+                "id": "filter",
+                "type": "select",
+                "default": "*",
+                "description": "When not *, only Processors that match will execute.",
+                "values": [
+                    {
+                        "id": "*",
+                        "name": "All"
+                    }
+                ],
+                "prefix_lang_id": "book"
+            },
+            {
+                "name": "Cleaning",
+                "id": "cleaning",
+                "type": "select",
+                "default": "n",
+                "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                "values": [
+                    {
+                        "name": "New Chapters",
+                        "id": "n"
+                    },
+                    {
+                        "name": "All Chapters",
+                        "id": "a"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Headers",
+                "id": "headers",
+                "type": "longstring",
+                "description": "Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Cleaning",
+                "id": "cleaning",
+                "type": "select",
+                "default": "n",
+                "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                "values": [
+                    {
+                        "name": "New Chapters",
+                        "id": "n"
+                    },
+                    {
+                        "name": "All Chapters",
+                        "id": "a"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": true,
+        "prefix_lang_id": "bkucall"
+    },
+    {
+        "id": "action.book.update.caches",
+        "icon": "healing",
+        "name": "Update All Caches",
+        "args": [
+            {
+                "name": "Clean Previews",
+                "id": "clean_previews",
+                "type": "select",
+                "default": "n",
+                "description": "Should the preview images be re-created?",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "bkclnall"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": true,
+        "prefix_lang_id": "bkclnall"
+    },
+    {
+        "id": "action.disk.check",
+        "icon": "album",
+        "name": "Check Space",
+        "args": [
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "utility",
+        "standalone": true,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.consume.folder",
+        "icon": "publish",
+        "name": "Import Folder",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Folder",
+                "id": "folder",
+                "type": "string",
+                "description": "The local folder to import into this folder.",
+                "values": []
+            },
+            {
+                "name": "Location",
+                "id": "dest",
+                "type": "select",
+                "default": "primary",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Primary Disk",
+                        "id": "primary"
+                    },
+                    {
+                        "name": "Archive Disk",
+                        "id": "archive"
+                    }
+                ],
+                "prefix_lang_id": "media"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": "medimport"
+    },
+    {
+        "id": "action.download.m3u8",
+        "icon": "download",
+        "name": "Save Video from M3u8",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "URL",
+                "id": "url",
+                "type": "url",
+                "description": "The link to the m3u8 file.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Filename",
+                "id": "filename",
+                "type": "filename",
+                "description": "The name of the file.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Location",
+                "id": "dest",
+                "type": "select",
+                "default": "primary",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Primary Disk",
+                        "id": "primary"
+                    },
+                    {
+                        "name": "Archive Disk",
+                        "id": "archive"
+                    }
+                ],
+                "prefix_lang_id": "media"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": "dlm3u8"
+    },
+    {
+        "id": "action.download.yt",
+        "icon": "download",
+        "name": "Save Video from YT",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "URL",
+                "id": "url",
+                "type": "string",
+                "description": "The youtube link to a video.  It should have ?v= in the string.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Destination?",
+                "id": "dest",
+                "description": "Where should these files be stored?",
+                "type": "select",
+                "default": "primary",
+                "values": [
+                    {
+                        "id": "primary",
+                        "name": "Primary Disk"
+                    },
+                    {
+                        "id": "archive",
+                        "name": "Archive Disk"
+                    }
+                ]
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.download.yt.music",
+        "icon": "download",
+        "name": "Save Music from YT",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "URL",
+                "id": "url",
+                "type": "string",
+                "description": "The youtube link to a video.  It should have ?v= in the string.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Output",
+                "id": "split_chapters",
+                "type": "select",
+                "default": "false",
+                "description": "How should the video be treated?",
+                "values": [
+                    {
+                        "name": "Single File",
+                        "id": "false"
+                    },
+                    {
+                        "name": "Split",
+                        "id": "true"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Destination?",
+                "id": "dest",
+                "description": "Where should these files be stored?",
+                "type": "select",
+                "default": "primary",
+                "values": [
+                    {
+                        "id": "primary",
+                        "name": "Primary Disk"
+                    },
+                    {
+                        "id": "archive",
+                        "name": "Archive Disk"
+                    }
+                ]
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.deduplicate.music",
+        "icon": "music_note",
+        "name": "De-Duplicate Music",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Mode",
+                "id": "mode",
+                "type": "select",
+                "default": "dupes",
+                "description": "Which action to take?",
+                "values": [
+                    {
+                        "name": "De-Duplicate",
+                        "id": "dupes"
+                    },
+                    {
+                        "name": "De-Duplicate (Artist - Title)",
+                        "id": "dupes_artist_title"
+                    },
+                    {
+                        "name": "Font Numbers",
+                        "id": "front_numbers"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Other Folder",
+                "id": "other_folder_id",
+                "type": "mfc",
+                "description": "Another folder to compare to when de-duplicating.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.file.encode",
+        "icon": "play_arrow",
+        "name": "Encode File",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Preset",
+                "id": "ffmpeg_preset",
+                "type": "select",
+                "default": "medium",
+                "description": "The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)",
+                "values": [
+                    {
+                        "name": "ultrafast: Minimal compression; very fast but produces large files.",
+                        "id": "ultrafast"
+                    },
+                    {
+                        "name": "superfast",
+                        "id": "superfast"
+                    },
+                    {
+                        "name": "veryfast",
+                        "id": "veryfast"
+                    },
+                    {
+                        "name": "faster",
+                        "id": "faster"
+                    },
+                    {
+                        "name": "fast",
+                        "id": "fast"
+                    },
+                    {
+                        "name": "medium (default): Balanced between speed and quality.",
+                        "id": "medium"
+                    },
+                    {
+                        "name": "slow",
+                        "id": "slow"
+                    },
+                    {
+                        "name": "slower",
+                        "id": "slower"
+                    },
+                    {
+                        "name": "veryslow: Maximum compression; slowest but produces smaller files with high quality.",
+                        "id": "veryslow"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Constant Rate Factor",
+                "id": "ffmpeg_crf",
+                "type": "select",
+                "default": "23",
+                "description": "Key parameter for controlling the quality and file size of videos",
+                "values": [
+                    {
+                        "name": "18 (Higher Quality)",
+                        "id": "18"
+                    },
+                    {
+                        "name": "19",
+                        "id": "19"
+                    },
+                    {
+                        "name": "20",
+                        "id": "20"
+                    },
+                    {
+                        "name": "21",
+                        "id": "21"
+                    },
+                    {
+                        "name": "22",
+                        "id": "22"
+                    },
+                    {
+                        "name": "23 (Default)",
+                        "id": "23"
+                    },
+                    {
+                        "name": "24",
+                        "id": "24"
+                    },
+                    {
+                        "name": "25 (Lower Quality)",
+                        "id": "25"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_file",
+        "standalone": false,
+        "prefix_lang_id": "medenc"
+    },
+    {
+        "id": "action.file.subtitle",
+        "icon": "title",
+        "name": "Burn Subtitles",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Preset",
+                "id": "ffmpeg_preset",
+                "type": "select",
+                "default": "medium",
+                "description": "The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)",
+                "values": [
+                    {
+                        "name": "ultrafast: Minimal compression; very fast but produces large files.",
+                        "id": "ultrafast"
+                    },
+                    {
+                        "name": "superfast",
+                        "id": "superfast"
+                    },
+                    {
+                        "name": "veryfast",
+                        "id": "veryfast"
+                    },
+                    {
+                        "name": "faster",
+                        "id": "faster"
+                    },
+                    {
+                        "name": "fast",
+                        "id": "fast"
+                    },
+                    {
+                        "name": "medium (default): Balanced between speed and quality.",
+                        "id": "medium"
+                    },
+                    {
+                        "name": "slow",
+                        "id": "slow"
+                    },
+                    {
+                        "name": "slower",
+                        "id": "slower"
+                    },
+                    {
+                        "name": "veryslow: Maximum compression; slowest but produces smaller files with high quality.",
+                        "id": "veryslow"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Constant Rate Factor",
+                "id": "ffmpeg_crf",
+                "type": "select",
+                "default": "23",
+                "description": "Key parameter for controlling the quality and file size of videos",
+                "values": [
+                    {
+                        "name": "18 (Higher Quality)",
+                        "id": "18"
+                    },
+                    {
+                        "name": "19",
+                        "id": "19"
+                    },
+                    {
+                        "name": "20",
+                        "id": "20"
+                    },
+                    {
+                        "name": "21",
+                        "id": "21"
+                    },
+                    {
+                        "name": "22",
+                        "id": "22"
+                    },
+                    {
+                        "name": "23 (Default)",
+                        "id": "23"
+                    },
+                    {
+                        "name": "24",
+                        "id": "24"
+                    },
+                    {
+                        "name": "25 (Lower Quality)",
+                        "id": "25"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_file",
+        "standalone": false,
+        "prefix_lang_id": "medsub"
+    },
+    {
+        "id": "action.folder.subtitle",
+        "icon": "title",
+        "name": "Burn Subtitles",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Preset",
+                "id": "ffmpeg_preset",
+                "type": "select",
+                "default": "medium",
+                "description": "The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)",
+                "values": [
+                    {
+                        "name": "ultrafast: Minimal compression; very fast but produces large files.",
+                        "id": "ultrafast"
+                    },
+                    {
+                        "name": "superfast",
+                        "id": "superfast"
+                    },
+                    {
+                        "name": "veryfast",
+                        "id": "veryfast"
+                    },
+                    {
+                        "name": "faster",
+                        "id": "faster"
+                    },
+                    {
+                        "name": "fast",
+                        "id": "fast"
+                    },
+                    {
+                        "name": "medium (default): Balanced between speed and quality.",
+                        "id": "medium"
+                    },
+                    {
+                        "name": "slow",
+                        "id": "slow"
+                    },
+                    {
+                        "name": "slower",
+                        "id": "slower"
+                    },
+                    {
+                        "name": "veryslow: Maximum compression; slowest but produces smaller files with high quality.",
+                        "id": "veryslow"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Constant Rate Factor",
+                "id": "ffmpeg_crf",
+                "type": "select",
+                "default": "23",
+                "description": "Key parameter for controlling the quality and file size of videos",
+                "values": [
+                    {
+                        "name": "18 (Higher Quality)",
+                        "id": "18"
+                    },
+                    {
+                        "name": "19",
+                        "id": "19"
+                    },
+                    {
+                        "name": "20",
+                        "id": "20"
+                    },
+                    {
+                        "name": "21",
+                        "id": "21"
+                    },
+                    {
+                        "name": "22",
+                        "id": "22"
+                    },
+                    {
+                        "name": "23 (Default)",
+                        "id": "23"
+                    },
+                    {
+                        "name": "24",
+                        "id": "24"
+                    },
+                    {
+                        "name": "25 (Lower Quality)",
+                        "id": "25"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": "medsubfol"
+    },
+    {
+        "id": "action.integrity.all",
+        "icon": "verified",
+        "name": "Check Integrity",
+        "args": [
+            {
+                "name": "Fix Issues",
+                "id": "fix",
+                "type": "select",
+                "default": "n",
+                "description": "Correct issues?",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media",
+        "standalone": true,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.integrity.folder",
+        "icon": "verified",
+        "name": "Check Integrity",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Fix Issues",
+                "id": "fix",
+                "type": "select",
+                "default": "n",
+                "description": "Correct issues?",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.move.folder",
+        "icon": "trending_up",
+        "name": "Move Folder",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Destination",
+                "id": "dest_id",
+                "type": "mfcmf",
+                "description": "The folder to move this folder under.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.generate.previews.all",
+        "icon": "image",
+        "name": "Generate Previews",
+        "args": [
+            {
+                "name": "Place",
+                "id": "place",
+                "type": "select",
+                "default": "10",
+                "description": "Position to take frame from",
+                "values": [
+                    {
+                        "name": "10%",
+                        "id": "10"
+                    },
+                    {
+                        "name": "20%",
+                        "id": "20"
+                    },
+                    {
+                        "name": "30%",
+                        "id": "30"
+                    },
+                    {
+                        "name": "40%",
+                        "id": "40"
+                    },
+                    {
+                        "name": "45%",
+                        "id": "45"
+                    },
+                    {
+                        "name": "50%",
+                        "id": "50"
+                    },
+                    {
+                        "name": "60%",
+                        "id": "60"
+                    },
+                    {
+                        "name": "70%",
+                        "id": "70"
+                    },
+                    {
+                        "name": "80%",
+                        "id": "80"
+                    },
+                    {
+                        "name": "90%",
+                        "id": "90"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media",
+        "standalone": true,
+        "prefix_lang_id": "makeprev"
+    },
+    {
+        "id": "action.generate.previews.folder",
+        "icon": "image",
+        "name": "Generate Previews",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Force",
+                "id": "force",
+                "type": "select",
+                "default": "false",
+                "description": "Force it to overwrite?",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "false"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "true"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Place",
+                "id": "place",
+                "type": "select",
+                "default": "45",
+                "description": "Position to take frame from",
+                "values": [
+                    {
+                        "name": "10%",
+                        "id": "10"
+                    },
+                    {
+                        "name": "20%",
+                        "id": "20"
+                    },
+                    {
+                        "name": "30%",
+                        "id": "30"
+                    },
+                    {
+                        "name": "40%",
+                        "id": "40"
+                    },
+                    {
+                        "name": "45%",
+                        "id": "45"
+                    },
+                    {
+                        "name": "50%",
+                        "id": "50"
+                    },
+                    {
+                        "name": "60%",
+                        "id": "60"
+                    },
+                    {
+                        "name": "70%",
+                        "id": "70"
+                    },
+                    {
+                        "name": "80%",
+                        "id": "80"
+                    },
+                    {
+                        "name": "90%",
+                        "id": "90"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": "makeprev"
+    },
+    {
+        "id": "action.update.mp3.tags.folder",
+        "icon": "music_note",
+        "name": "Update Mp3 Tags",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Genre",
+                "id": "genre",
+                "type": "string",
+                "description": "Genre value",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Album",
+                "id": "album",
+                "type": "string",
+                "description": "Album value",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Year",
+                "id": "year",
+                "type": "string",
+                "description": "Year value",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.test",
+        "icon": "bolt",
+        "name": "Test",
+        "args": [
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "utility",
+        "standalone": true,
+        "prefix_lang_id": ""
+    },
+    {
+        "id": "action.wake.pc",
+        "icon": "bolt",
+        "name": "Wake Up PC",
+        "args": [
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "utility",
+        "standalone": true,
+        "prefix_lang_id": ""
+    }
+]

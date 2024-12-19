@@ -16,7 +16,8 @@ from media_queries import find_missing_file_previews_in_folder, find_missing_fil
     find_files_in_folder
 from media_utils import get_data_for_mediafile, get_preview_for_mediafile, get_folder_by_user
 from number_utils import parse_boolean, is_integer
-from plugin_system import ActionMediaFolderPlugin, ActionMediaPlugin, plugin_select_values, plugin_select_arg
+from plugin_system import ActionMediaFolderPlugin, ActionMediaPlugin
+from plugin_methods import plugin_select_arg, plugin_select_values
 from text_utils import is_blank
 from thread_utils import TaskWrapper
 
@@ -28,6 +29,7 @@ class MakePreviewsTask(ActionMediaFolderPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'makeprev'
 
     def get_sort(self):
         """
@@ -129,6 +131,7 @@ class MakeAllPreviewsTask(ActionMediaPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'makeprev'
 
     def get_sort(self):
         """
@@ -225,6 +228,8 @@ class PreviewFolder(TaskWrapper):
         self.all_folders = all_folders
         self.force = force
         self.media_position = media_position
+        if folder_id != '*':
+            self.ref_folder_id = folder_id
 
     def run(self, db_session: Session):
         """

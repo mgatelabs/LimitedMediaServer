@@ -28,6 +28,7 @@ class FileEncodeTask(ActionMediaFilePlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'medenc'
 
     def get_sort(self):
         return {'id': 'media_file_encode', 'sequence': 1}

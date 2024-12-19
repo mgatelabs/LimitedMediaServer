@@ -14,7 +14,8 @@ from image_utils import crop_and_resize
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
 from number_utils import parse_boolean
-from plugin_system import ActionMediaFolderPlugin, plugin_string_arg, plugin_select_arg, plugin_select_values
+from plugin_system import ActionMediaFolderPlugin
+from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values
 from text_utils import is_blank, common_prefix_postfix, extract_yt_code, remove_prefix_and_postfix, \
     remove_start_digits_pattern
 from thread_utils import TaskWrapper
@@ -140,6 +141,7 @@ class DownloadYtMusic(TaskWrapper):
         self.primary_path = primary_path
         self.archive_path = archive_path
         self.temp_path = temp_path
+        self.ref_folder_id = folder_id
 
     def run(self, db_session: Session):
 

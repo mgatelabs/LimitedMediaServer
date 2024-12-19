@@ -29,6 +29,7 @@ class FileSubtitleTask(ActionMediaFilePlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'medsub'
 
     def get_sort(self):
         return {'id': 'media_file_subtitle', 'sequence': 1}
@@ -95,6 +96,7 @@ class FolderSubtitleTask(ActionMediaFolderPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'medsubfol'
 
     def get_sort(self):
         return {'id': 'media_folder_subtitle', 'sequence': 1}

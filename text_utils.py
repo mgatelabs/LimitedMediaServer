@@ -346,3 +346,38 @@ def format_datatime(value: Optional[datetime]):
     if not value:
         return ''
     return value.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def extract_webp_strings(input_text):
+    import re
+
+    # Find all matches of `.webp"` in the string
+    matches = [match.start() for match in re.finditer(r'\.webp"', input_text)]
+    result = []
+
+    for match in matches:
+        # Look backwards from the `.webp"` match to find the preceding `"`
+        start_idx = input_text.rfind('"', 0, match)
+        if start_idx != -1:  # Ensure a starting `"` was found
+            # Extract the substring between the `"` and `.webp"`
+            extracted_string = input_text[start_idx + 1:match + 5]
+            result.append(extracted_string)
+
+    return result
+
+def extract_jpeg_strings(input_text):
+    import re
+
+    # Find all matches of `.webp"` in the string
+    matches = [match.start() for match in re.finditer(r'\.jpeg"', input_text)]
+    result = []
+
+    for match in matches:
+        # Look backwards from the `.webp"` match to find the preceding `"`
+        start_idx = input_text.rfind('"', 0, match)
+        if start_idx != -1:  # Ensure a starting `"` was found
+            # Extract the substring between the `"` and `.webp"`
+            extracted_string = input_text[start_idx + 1:match + 5]
+            result.append(extracted_string)
+
+    return result

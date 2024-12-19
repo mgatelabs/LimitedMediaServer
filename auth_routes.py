@@ -11,6 +11,8 @@ from common_utils import generate_success_response, generate_failure_response
 from constants import PROPERTY_SERVER_SECRET_KEY, PROPERTY_SERVER_AUTH_TIMEOUT_KEY, CONFIG_USE_HTTPS
 from db import User, UserHardSession, db
 from feature_flags import HARD_SESSIONS
+from messages import msg_auth_login_failure, msg_missing_parameter, msg_mismatched_parameters, msg_server_error, \
+    msg_operation_complete
 from text_utils import clean_string, is_not_blank, is_blank
 
 # Define a Blueprint for authentication routes
@@ -66,9 +68,9 @@ def attempt_standard_auth(username: str, password: str):
         if check_password_hash(user.password, password):
             return generate_auth_result(user)
         else:
-            return {'status': 'FAIL', 'message': 'Invalid credentials'}, 401
+            return generate_failure_response('Invalid credentials', 401, {}, [msg_auth_login_failure()])
     except NoResultFound:
-        return {'status': 'FAIL', 'message': 'Invalid credentials'}, 401
+        return generate_failure_response('Invalid credentials', 401, {}, [msg_auth_login_failure()])
 
 
 def attempt_token_auth(token: str, pin: str):
@@ -80,10 +82,10 @@ def attempt_token_auth(token: str, pin: str):
     """
     try:
         # Query the Users table for a matching user
-        hard_session = UserHardSession.query.filter(UserHardSession.token==token).one()
+        hard_session = UserHardSession.query.filter(UserHardSession.token == token).one()
 
         if hard_session.expired is not None:
-            return generate_failure_response('Invalid credentials', 401)
+            return generate_failure_response('Invalid credentials', 401, {}, [msg_auth_login_failure()])
 
         # Check if the password matches
         if check_password_hash(hard_session.pin, pin):
@@ -100,9 +102,9 @@ def attempt_token_auth(token: str, pin: str):
             hard_session.expired = datetime.now(timezone.utc)
             db.session.commit()
 
-            return generate_failure_response('Invalid credentials',  401)
+            return generate_failure_response('Invalid credentials', 401, {}, [msg_auth_login_failure()])
     except NoResultFound:
-        return generate_failure_response('Invalid credentials', 401)
+        return generate_failure_response('Invalid credentials', 401, {}, [msg_auth_login_failure()])
 
 
 # Route to handle login requests
@@ -121,7 +123,7 @@ def login_request():
     elif is_not_blank(token) and is_not_blank(pin):
         return attempt_token_auth(token, pin)
 
-    return generate_failure_response('Invalid credentials', 401)
+    return generate_failure_response('Invalid credentials', 401, {}, [msg_auth_login_failure()])
 
 
 # Route to handle login requests
@@ -132,9 +134,13 @@ def request_hard_session(user_details):
     pin2 = clean_string(request.form.get('pin2'))
 
     if is_blank(pin):
-        return generate_failure_response('pin is required', 400)
+        return generate_failure_response('pin is required', 400, {},[msg_missing_parameter("pin")])
+
+    if is_blank(pin2):
+        return generate_failure_response('pin2 is required', 400, {},[msg_missing_parameter("pin2")])
+
     if pin != pin2:
-        return generate_failure_response('pin != pin2', 400)
+        return generate_failure_response('pin != pin2', 400, {},[msg_mismatched_parameters("pin", "pin2")])
 
     # Get the user id
     user_id = get_uid(user_details)
@@ -142,16 +148,17 @@ def request_hard_session(user_details):
     # Make a new random token
     token = generate_secure_token(200)
 
-    new_session = UserHardSession(user_id=user_id, token=token, pin=generate_password_hash(pin), expired=None, last=None)
+    new_session = UserHardSession(user_id=user_id, token=token, pin=generate_password_hash(pin), expired=None,
+                                  last=None)
 
     try:
         db.session.add(new_session)
         db.session.commit()
-        return generate_success_response('Token Generated', {'token': token})
+        return generate_success_response('Token Generated', {'token': token}, [msg_operation_complete()])
 
     except Exception as ex:
         logging.exception(ex)
-        return generate_failure_response('Exception', 401)
+        return generate_failure_response('Exception', 401, {},[msg_server_error()])
 
 
 # Route to handle login requests
@@ -175,7 +182,7 @@ def renew_request(user_details):
          'exp': expiration_time},
         current_app.config[PROPERTY_SERVER_SECRET_KEY], algorithm='HS256')
 
-    response = make_response(generate_success_response('', {'token': token}))
+    response = make_response(generate_success_response('', {'token': token}, messages=[msg_operation_complete()]))
 
     # Set the JWT token as a cookie
     response.set_cookie(

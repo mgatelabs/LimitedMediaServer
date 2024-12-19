@@ -1,115 +1,11 @@
 import argparse
-from typing import List, Dict
 
 from flask_sqlalchemy.session import Session
 
 from app_properties import AppPropertyDefinition
 from constants import PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, \
     PROPERTY_SERVER_MEDIA_TEMP_FOLDER
-
-
-# Function to create a string argument for a plugin
-def plugin_string_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "string",
-        "description": arg_description,
-        "values": []
-    }
-
-# Function to create a filename argument for a plugin
-def plugin_filename_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "filename",
-        "description": arg_description,
-        "values": []
-    }
-
-# Function to create a long string argument for a plugin
-def plugin_long_string_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "longstring",
-        "description": arg_description,
-        "values": []
-    }
-
-
-# Function to create a URL argument for a plugin
-def plugin_url_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "url",
-        "description": arg_description,
-        "values": []
-    }
-
-
-# Function to create a select argument for a plugin
-def plugin_select_arg(arg_name: str, arg_id: str, default_value: str, values: List[Dict[str, str]],
-                      arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "select",
-        "default": default_value,
-        "description": arg_description,
-        "values": values
-    }
-
-
-# Function to create select values for a plugin argument
-def plugin_select_values(*args) -> list:
-    # Check if the number of arguments is divisible by 2 and > 0
-    if len(args) == 0 or (len(args) % 2) != 0:
-        raise ValueError("The number of arguments must be divisible by 2 and greater than 0.")
-
-    # Create a list of dicts, pairing each consecutive argument
-    result = [{"name": args[i], "id": args[i + 1]} for i in range(0, len(args), 2)]
-
-    return result
-
-
-# Predefined select values for Yes/No options
-PLUGIN_VALUES_Y_N = plugin_select_values("No", 'n', 'Yes', 'y')
-
-
-# Function to create a media folder chooser move folder argument for a plugin
-def plugin_media_folder_chooser_move_folder_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "mfcmf",
-        "description": arg_description,
-        "values": []
-    }
-
-
-# Function to create a media folder chooser move folder argument for a plugin
-def plugin_media_folder_chooser_folder_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "mfc",
-        "description": arg_description,
-        "values": []
-    }
-
-
-# Function to create a media folder display argument for a plugin
-def plugin_media_folder_display_arg(arg_name: str, arg_id: str, arg_description: str = ''):
-    return {
-        "name": arg_name,
-        "id": arg_id,
-        "type": "mfd",
-        "description": arg_description,
-        "values": []
-    }
+from plugin_methods import plugin_media_folder_display_arg, add_logging_arg, plugin_string_arg
 
 
 # Base class for all action plugins
@@ -124,11 +20,23 @@ class ActionPlugin:
         self.type = 'ACTION'
         self.sort_group = self.get_sort()['id']
         self.sort_sequence = self.get_sort()['sequence']
+        self.prefix_lang_id = ''
 
     @classmethod
     def next_counter(cls):
         cls.counter += 1
         return cls.counter
+
+    def to_json(self) -> dict:
+        return {
+            "id": self.get_action_id(),
+            "icon": self.get_action_icon(),
+            "name": self.get_action_name(),
+            "args": add_logging_arg(self.get_action_args()),
+            "category": self.get_category(),
+            "standalone": self.is_standalone(),
+            "prefix_lang_id": self.prefix_lang_id
+        }
 
     def get_type(self):
         return self.type
@@ -156,7 +64,7 @@ class ActionPlugin:
         return 'memory'
 
     def get_action_args(self):
-        raise NotImplementedError
+        return []
 
     def process_action_args(self, args):
         raise NotImplementedError
@@ -213,12 +121,7 @@ class ActionSeriesPlugin(ActionPlugin):
         self.type = 'ACTIONSERIES'
 
     def get_action_args(self):
-        return [{
-            "name": "Series ID",
-            "id": "series_id",
-            "type": "string",
-            "values": []
-        }]
+        return [plugin_string_arg("Series ID", "series_id", 'Series ID', 'com')]
 
     def get_category(self):
         return 'series'
@@ -242,12 +145,7 @@ class ActionBookPlugin(ActionPlugin):
         self.type = 'ACTIONBOOK'
 
     def get_action_args(self):
-        return [{
-            "name": "Book ID",
-            "id": "series_id",
-            "type": "string",
-            "values": []
-        }]
+        return [plugin_string_arg("Book ID", "book_id", 'The Book to process', 'com')]
 
     def get_category(self):
         return 'book'
@@ -303,7 +201,7 @@ class ActionMediaFolderPlugin(ActionPlugin):
 
     def get_action_args(self):
         return [
-            plugin_media_folder_display_arg('Folder', 'folder_id', 'Referenced folder')
+            plugin_media_folder_display_arg('Folder', 'folder_id', 'Referenced folder', 'com')
         ]
 
     def absorb_config(self, config):
@@ -339,12 +237,7 @@ class ActionMediaFilePlugin(ActionPlugin):
         self.temp_path = ''
 
     def get_action_args(self):
-        return [{
-            "name": "File ID",
-            "id": "file_id",
-            "type": "string",
-            "values": []
-        }]
+        return [plugin_string_arg("File ID", "file_id", 'The file to process', 'com')]
 
     def absorb_config(self, config):
         """

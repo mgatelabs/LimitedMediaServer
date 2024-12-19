@@ -1,7 +1,7 @@
 import logging
 import subprocess
 
-from plugin_system import plugin_select_arg, plugin_select_values
+from plugin_methods import plugin_select_arg, plugin_select_values
 from thread_utils import TaskWrapper, NoOpTaskWrapper
 
 FFMPEG_PRESET = plugin_select_arg('Preset', 'ffmpeg_preset', 'medium', plugin_select_values(
@@ -9,14 +9,14 @@ FFMPEG_PRESET = plugin_select_arg('Preset', 'ffmpeg_preset', 'medium', plugin_se
     'veryfast', 'veryfast', 'faster', 'faster', 'fast', 'fast', 'medium (default): Balanced between speed and quality.',
     'medium', 'slow', 'slow', 'slower', 'slower',
     'veryslow: Maximum compression; slowest but produces smaller files with high quality.', 'veryslow'),
-                                  'The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)')
+                                  'The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)', 'com')
 FFMPEG_PRESET_VALUES = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 
 FFMPEG_CRF = plugin_select_arg('Constant Rate Factor', 'ffmpeg_crf', '23',
                                plugin_select_values('18 (Higher Quality)', '18', '19', '19', '20', '20', '21', '21',
                                                     '22', '22', '23 (Default)',
                                                     '23', '24', '24', '25 (Lower Quality)', '25'),
-                               'Key parameter for controlling the quality and file size of videos')
+                               'Key parameter for controlling the quality and file size of videos', 'com')
 FFMPEG_CRF_VALUES = ['18', '19', '20', '21', '22', '23', '24', '25']
 
 

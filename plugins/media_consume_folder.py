@@ -7,6 +7,7 @@ from flask_sqlalchemy.session import Session
 from feature_flags import MANAGE_MEDIA
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
+from plugin_methods import plugin_select_arg, plugin_select_values
 from plugin_system import ActionMediaFolderPlugin
 from text_utils import is_blank, clean_string
 from thread_utils import TaskWrapper
@@ -24,6 +25,7 @@ class ConsumeFolderTask(ActionMediaFolderPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'medimport'
 
     def get_sort(self):
         return {'id': 'media_consume_folder', 'sequence': 1}
@@ -52,14 +54,8 @@ class ConsumeFolderTask(ActionMediaFolderPlugin):
             "description": "The local folder to import into this folder.",
             "values": []
         })
-        result.append({
-            "name": "Destination?",
-            "id": "dest",
-            "description": "Where should these files be stored?",
-            "type": "select",
-            "default": "primary",
-            "values": [{"id": 'primary', "name": 'Primary Disk'}, {"id": 'archive', "name": 'Archive Disk'}]
-        })
+        result.append(plugin_select_arg('Location', 'dest', 'primary',
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media'))
         return result
 
     def process_action_args(self, args):

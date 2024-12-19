@@ -1,18 +1,19 @@
 import argparse
-import random
-from itertools import cycle
+import platform
 
 from flask_sqlalchemy.session import Session
 
-from constants import PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_PROCESSORS
+from constants import APP_KEY_PROCESSORS
 from db import Book
 from feature_flags import MANAGE_VOLUME
+from plugin_methods import plugin_select_arg
 from plugin_system import ActionPlugin, ActionBookPlugin
 from plugins.book_update_contents import group_books_by_processor, interleave_books
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
+
 
 class CheckAllTagsTask(ActionPlugin):
     """
@@ -22,6 +23,7 @@ class CheckAllTagsTask(ActionPlugin):
     def __init__(self):
         super().__init__()
         self.processors = []
+        self.prefix_lang_id ='bktagall'
 
     def get_sort(self):
         return {'id': 'books_tags', 'sequence': 0}
@@ -54,14 +56,11 @@ class CheckAllTagsTask(ActionPlugin):
         for processor in self.processors:
             values.append({"id": processor.processor_id, "name": processor.processor_name})
 
-        result = [{
-            "name": "FILTER",
-            "id": "filter",
-            "type": "select",
-            "default": "*",
-            "description": "When not *, only Processors that match will execute.",
-            "values": values
-        }]
+        result = super().get_action_args()
+
+        result.append(
+            plugin_select_arg('Filter', 'filter', '*', values, "When not *, only Processors that match will execute.",
+                              'book'))
 
         return result
 
@@ -75,6 +74,9 @@ class CheckAllTagsTask(ActionPlugin):
             return results
 
         return None
+
+    def is_ready(self):
+        return platform.system() == 'Linux'
 
     def absorb_config(self, config):
         self.processors = config[APP_KEY_PROCESSORS]
@@ -94,7 +96,7 @@ class CheckAllTagsTask(ActionPlugin):
             if processor == '*' or processor == book.processor:
                 if is_blank(book.tags):
                     results.append(
-                       CheckBookTagsTask("Book Tags", f'Checking: {book.name}', book.id, self.processors, '*'))
+                        CheckBookTagsTask("Book Tags", f'Checking: {book.name}', book.id, self.processors, '*'))
 
         return results
 
@@ -107,6 +109,7 @@ class UpdateSingleTagsTask(ActionBookPlugin):
     def __init__(self):
         super().__init__()
         self.processors = []
+        self.prefix_lang_id = 'bktagall'
 
     def is_book(self):
         return True
@@ -146,6 +149,9 @@ class UpdateSingleTagsTask(ActionBookPlugin):
 
         return None
 
+    def is_ready(self):
+        return platform.system() == 'Linux'
+
     def absorb_config(self, config):
         self.processors = config[APP_KEY_PROCESSORS]
 
@@ -154,7 +160,7 @@ class UpdateSingleTagsTask(ActionBookPlugin):
 
     def create_task(self, db_session: Session, args):
 
-        book_id = args['series_id']
+        book_id = args['book_id']
         results = []
 
         if is_not_blank(book_id):
@@ -173,6 +179,7 @@ class CheckBookTagsTask(TaskWrapper):
         self.processors = processors
         self.processor_filter = processor_filter
         self.clean_all = clean_all
+        self.ref_book_id = book_id
 
     def run(self, db_session: Session):
 

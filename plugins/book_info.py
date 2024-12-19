@@ -18,6 +18,7 @@ class UpdateAllTagsTask(ActionPlugin):
 
     def __init__(self):
         super().__init__()
+        self.prefix_lang_id = 'bkinfo'
 
     def get_sort(self):
         return {'id': 'books_info', 'sequence': 2}

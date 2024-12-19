@@ -9,7 +9,8 @@ from db import MediaFolder
 from feature_flags import MANAGE_MEDIA
 from media_queries import find_folder_by_id, find_files_in_folder, find_all_folders
 from media_utils import get_data_for_mediafile, get_preview_for_mediafile
-from plugin_system import ActionMediaFolderPlugin, plugin_select_arg, PLUGIN_VALUES_Y_N, ActionMediaPlugin
+from plugin_system import ActionMediaFolderPlugin, ActionMediaPlugin
+from plugin_methods import plugin_select_arg, PLUGIN_VALUES_Y_N
 from text_utils import is_blank
 from thread_utils import TaskWrapper
 

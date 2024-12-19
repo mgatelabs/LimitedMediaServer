@@ -8,7 +8,8 @@ from flask_sqlalchemy.session import Session
 from feature_flags import MANAGE_MEDIA
 from media_queries import find_folder_by_id, find_files_in_folder, find_files_in_folder_with_mime
 from media_utils import get_data_for_mediafile
-from plugin_system import ActionMediaFolderPlugin, plugin_string_arg
+from plugin_system import ActionMediaFolderPlugin
+from plugin_methods import plugin_string_arg
 from text_utils import is_blank, extract_artist_title_from_audio_filename, is_not_blank, extract_yt_code
 from thread_utils import TaskWrapper
 

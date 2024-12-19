@@ -22,7 +22,7 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
         print("This function can only run on a Linux-based device.")
         return False
 
-    command = ['curl_chrome116', url]
+    command = ['curl_chrome116', url, '-L', '--max-redirs', '5']
     if headers:
         for key, value in headers.items():
             command.extend(['-H', f'{key}: {value}'])
@@ -66,7 +66,7 @@ def custom_curl_headers(url, headers=None, download_file=None, task_wrapper:Task
         print("This function can only run on a Linux-based device.")
         return False
 
-    command = ['curl_chrome116', url, '-I']
+    command = ['curl_chrome116', url, '-I', '-L', '--max-redirs', '5']
     if headers:
         for key, value in headers.items():
             command.extend(['-H', f'{key}: {value}'])
@@ -116,7 +116,7 @@ def custom_curl_post(url, data: Optional[dict[str, str]], headers=None, download
         print("This function can only run on a Linux-based device.")
         return False
 
-    command = ['curl_chrome116', url]
+    command = ['curl_chrome116', url, '-L', '--max-redirs', '5']
     if headers:
         for key, value in headers.items():
             command.extend(['-H', f'{key}: {value}'])

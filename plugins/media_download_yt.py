@@ -12,7 +12,8 @@ from feature_flags import MANAGE_MEDIA
 from file_utils import temporary_folder
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
-from plugin_system import ActionMediaFolderPlugin, plugin_string_arg
+from plugin_system import ActionMediaFolderPlugin
+from plugin_methods import plugin_string_arg
 from text_utils import is_blank
 from thread_utils import TaskWrapper
 
@@ -105,6 +106,7 @@ class DownloadYt(TaskWrapper):
         self.primary_path = primary_path
         self.archive_path = archive_path
         self.temp_path = temp_path
+        self.ref_folder_id = folder_id
 
     def run(self, db_session: Session):
 
