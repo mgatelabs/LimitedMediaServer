@@ -107,6 +107,7 @@ class UpdateSingleStatusTask(ActionBookPlugin):
     def __init__(self):
         super().__init__()
         self.processors = []
+        self.prefix_lang_id = 'bkact'
 
     def is_book(self):
         return True
