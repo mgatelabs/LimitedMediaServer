@@ -3,19 +3,22 @@ import argparse
 from flask import Flask
 import logging
 import json
+import platform
 
 from app_properties import AppPropertyDefinition
 from app_queries import get_secret_key, get_server_port, get_server_host, get_auth_timeout, check_and_insert_property, \
     get_media_primary_folder, get_media_alt_folder, get_media_temp_folder, clean_unknown_properties, get_volume_folder, \
-    get_plugin_value
+    get_plugin_value, get_volume_format
 from app_routes import admin_blueprint
-from app_utils import value_is_folder, value_is_integer, value_is_between_int_x_y, value_is_ipaddress, get_random_hash
+from app_utils import value_is_folder, value_is_integer, value_is_between_int_x_y, value_is_ipaddress, get_random_hash, \
+    value_is_in_list
 from auth_routes import auth_blueprint
 from constants import PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_SECRET_KEY, PROPERTY_SERVER_HOST_KEY, \
     PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, \
     PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_MEDIA_READY, \
     CONFIG_USE_HTTPS, PROPERTY_DEFINITIONS, PROPERTY_SERVER_VOLUME_READY, \
-    PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_SLC, APP_KEY_AUTHENTICATE, APP_KEY_PLUGINS, APP_KEY_PROCESSORS
+    PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_SLC, APP_KEY_AUTHENTICATE, APP_KEY_PLUGINS, APP_KEY_PROCESSORS, \
+    PROPERTY_SERVER_VOLUME_FORMAT
 from db import init_db, db
 from health_routes import health_blueprint
 from media_routes import media_blueprint
@@ -99,9 +102,13 @@ if __name__ == '__main__':
     for plugin in plugins['all']:
         plugin.add_args(parser)
 
+    server_default_port = '80'
+    if platform.system() == 'Linux':
+        server_default_port = '5000'
+
     property_definitions = [
         # Server
-        AppPropertyDefinition(PROPERTY_SERVER_PORT_KEY, '80',
+        AppPropertyDefinition(PROPERTY_SERVER_PORT_KEY, server_default_port,
                               'Default port number. Restart server if changed.',
                               [value_is_integer, value_is_between_int_x_y(1, 65535)]),
         AppPropertyDefinition(PROPERTY_SERVER_SECRET_KEY, get_random_hash,
@@ -130,6 +137,9 @@ if __name__ == '__main__':
         AppPropertyDefinition(PROPERTY_SERVER_VOLUME_FOLDER, '',
                               'Path to a folder where volume files will be kept.  This should be on a high performance drive.  Restart server if changed.',
                               [value_is_folder]),
+        AppPropertyDefinition(PROPERTY_SERVER_VOLUME_FORMAT, 'PNG',
+                              'The file format to store new images as.  Possible values include: PNG or WEBP.  Restart server if changed.',
+                              [value_is_in_list(['PNG', 'WEBP'])]),
     ]
 
     # Ensure any plugin that needs a property, gets it
@@ -209,6 +219,7 @@ if __name__ == '__main__':
         app.config[PROPERTY_SERVER_MEDIA_TEMP_FOLDER] = get_media_temp_folder()
 
         app.config[PROPERTY_SERVER_VOLUME_FOLDER] = get_volume_folder()
+        app.config[PROPERTY_SERVER_VOLUME_FORMAT] = get_volume_format()
 
         app.config[CONFIG_USE_HTTPS] = use_ssl
 

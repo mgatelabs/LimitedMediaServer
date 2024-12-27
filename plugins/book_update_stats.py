@@ -8,20 +8,19 @@ from date_utils import convert_yyyymmdd_to_date, convert_timestamp_to_datetime
 from feature_flags import MANAGE_VOLUME
 from image_utils import resize_image
 from plugin_methods import plugin_select_arg, plugin_select_values
-from plugin_system import ActionPlugin, ActionBookPlugin
+from plugin_system import ActionBookSpecificPlugin, ActionBookGeneralPlugin
 from text_utils import is_blank
 from thread_utils import TaskWrapper
 from volume_queries import update_book_live, manage_book_chapters
 
 
-class UpdateAllCaches(ActionPlugin):
+class UpdateAllCaches(ActionBookGeneralPlugin):
     """
-    This is a generic way to cause each book to update its living JSON definition.
+    This is a generic way to cause every book to update its living DB definition.
     """
 
     def __init__(self):
         super().__init__()
-        self.book_folder = ''
         self.prefix_lang_id = 'bkclnall'
 
     def get_sort(self):
@@ -56,15 +55,14 @@ class UpdateAllCaches(ActionPlugin):
 
     def absorb_config(self, config):
         super().absorb_config(config)
-        self.book_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
 
     def create_task(self, db_session: Session, args):
-        return UpdateAllJson("Update", 'All Volume Definitions', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
+        return UpdateAllJson("Update", 'All Volume Definitions', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_storage_folder)
 
 
-class UpdateSingleCache(ActionBookPlugin):
+class UpdateSingleCache(ActionBookSpecificPlugin):
     """
-    This is a generic way to cause a single book to update its living JSON definition.
+    This is a generic way to cause a single book to update its living DB definition.
     """
 
     def __init__(self):

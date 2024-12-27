@@ -63,6 +63,22 @@ def value_is_between_int_x_y(x: int, y: int):
     return validator
 
 
+def value_is_in_list(values:list[str]):
+    """
+    Validate if the given value is in a list of values
+
+    :param values: string list
+    :return: A validator function that checks if the value is in the list.
+    """
+    def validator(value: str) -> str | None:
+        if value in values:
+            return None
+        else:
+            return 'Invalid Value'
+
+    return validator
+
+
 def value_is_ipaddress(value: str) -> str | None:
     """
     Validate if the given value is a valid IP address.

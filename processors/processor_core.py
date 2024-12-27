@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from db import Book
+from image_utils import convert_images_to_format
 from thread_utils import TaskWrapper, NoOpTaskWrapper
 
 
@@ -51,16 +52,17 @@ class CustomDownloadInterface(ABC):
         """
         pass
 
-    @abstractmethod
-    def clean_folder(self, definition: Book, chapter, path):
+    def clean_folder(self, definition: Book, chapter, path, storage_format: str):
         """
-        This is a chance for you to clean up the recently generated folder.  Maybe convert from JPG to PNG.
+        This is a chance for you to clean up the recently generated folder.  Maybe convert from JPG to PNG / WEBP.
+        :param storage_format:
         :param definition: The book to process (JSON)
         :param chapter: This will be an item from list_chapters so {'chapter': "chapter_name", 'href': "chapter_url"}
         :param path: The folder path for this chapter
+        :param storage_format: PNG or WEBP
         :return: Nothing
         """
-        pass
+        convert_images_to_format(path, storage_format, self.task_wrapper)
 
     @abstractmethod
     def get_tags(self, definition: Book, headers):

@@ -14,7 +14,8 @@ from thread_utils import TaskWrapper
 from utility import random_sleep
 
 
-def _process_download(processor, token, book: Book, task_wrapper, book_folder: str, clean_all: bool = False):
+def _process_download(processor, token, book: Book, task_wrapper, book_folder: str, storage_format: str,
+                      clean_all: bool = False):
     headers = None
 
     headers_required = processor.headers_required(book)
@@ -151,7 +152,7 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
         clean_images_folder(destination_folder, task_wrapper)
 
         # Get rid of junk files and fix images
-        processor.clean_folder(book, chapter, destination_folder)
+        processor.clean_folder(book, chapter, destination_folder, storage_format)
 
     if skipped_chapters > 0:
         task_wrapper.info(f'Skipped {skipped_chapters} Chapters')
@@ -171,10 +172,11 @@ class VolumeProcessor:
     This is merging the book logic into a single place for simplicity.
     """
 
-    def __init__(self, processors, book_folder: str, task_wrapper: TaskWrapper):
+    def __init__(self, processors, book_folder: str, storage_format, task_wrapper: TaskWrapper):
         self.process_types = {}
         self.processors = processors
         self.book_folder = book_folder
+        self.storage_format = storage_format
 
         self.task_wrapper = task_wrapper
 
@@ -208,8 +210,7 @@ class VolumeProcessor:
         if processor is not None:
             self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
             book_result = _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper,
-                                            self.book_folder,
-                                            clean_all)
+                                            self.book_folder, self.storage_format, clean_all)
         else:
             self.task_wrapper.critical('Unknown Processor: ' + book_type)
 

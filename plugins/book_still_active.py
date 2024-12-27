@@ -3,25 +3,23 @@ import platform
 
 from flask_sqlalchemy.session import Session
 
-from constants import PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_PROCESSORS
 from db import Book
 from feature_flags import MANAGE_VOLUME
 from plugin_methods import plugin_select_arg
-from plugin_system import ActionPlugin, ActionBookPlugin
+from plugin_system import ActionBookSpecificPlugin, ActionBookGeneralPlugin
 from plugins.book_update_contents import group_books_by_processor, interleave_books
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
 
-class CheckAllStatusTask(ActionPlugin):
+class CheckAllStatusTask(ActionBookGeneralPlugin):
     """
     This is used to download new book content from the Internet (All Books).
     """
 
     def __init__(self):
         super().__init__()
-        self.processors = []
         self.prefix_lang_id = 'bkact'
 
     def get_sort(self):
@@ -75,10 +73,7 @@ class CheckAllStatusTask(ActionPlugin):
         return None
 
     def is_ready(self):
-        return platform.system() == 'Linux'
-
-    def absorb_config(self, config):
-        self.processors = config[APP_KEY_PROCESSORS]
+        return super().is_ready() and platform.system() == 'Linux'
 
     def create_task(self, db_session: Session, args):
 
@@ -94,19 +89,18 @@ class CheckAllStatusTask(ActionPlugin):
         for book in interleaved_books:
             if processor == '*' or processor == book.processor:
                 results.append(
-                   CheckBookStatusTask("BookStatus", f'Checking: {book.name}', book.id, self.processors, '*'))
+                    CheckBookStatusTask("BookStatus", f'Checking: {book.name}', book.id, self.processors))
 
         return results
 
 
-class UpdateSingleStatusTask(ActionBookPlugin):
+class UpdateSingleStatusTask(ActionBookSpecificPlugin):
     """
     This is used to download new book content from the Internet (Single Book).
     """
 
     def __init__(self):
         super().__init__()
-        self.processors = []
         self.prefix_lang_id = 'bkact'
 
     def is_book(self):
@@ -147,9 +141,6 @@ class UpdateSingleStatusTask(ActionBookPlugin):
 
         return None
 
-    def absorb_config(self, config):
-        self.processors = config[APP_KEY_PROCESSORS]
-
     def get_feature_flags(self):
         return MANAGE_VOLUME
 
@@ -161,19 +152,18 @@ class UpdateSingleStatusTask(ActionBookPlugin):
         if is_not_blank(book_id):
             book = find_book_by_id(book_id, db_session)
             if book is not None and book.active:
-                return CheckBookStatusTask("Book Status", f'Checking: {book.name}', book.id, self.processors, '*')
+                return CheckBookStatusTask("Book Status", f'Checking: {book.name}', book.id, self.processors)
 
         return results
 
 
 class CheckBookStatusTask(TaskWrapper):
-    def __init__(self, name, description, book_id, processors, processor_filter: str = "*",
-                 clean_all: bool = False):
+    def __init__(self, name, description, book_id, processors, clean_all: bool = False):
         super().__init__(name, description)
         self.book_id = book_id
         self.processors = processors
-        self.processor_filter = processor_filter
         self.clean_all = clean_all
+        self.ref_book_id = book_id
 
     def run(self, db_session: Session):
 
@@ -181,7 +171,7 @@ class CheckBookStatusTask(TaskWrapper):
 
         if book is not None:
             self.debug('Found book definition : ' + self.book_id)
-            bd = VolumeProcessor(self.processors, '', self)
+            bd = VolumeProcessor(self.processors, '', 'PNG', self)
             status = bd.ia_active(book, self.token)
             if status is not None and not status:
                 self.info('Book no longer active')

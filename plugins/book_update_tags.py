@@ -3,11 +3,10 @@ import platform
 
 from flask_sqlalchemy.session import Session
 
-from constants import APP_KEY_PROCESSORS
 from db import Book
 from feature_flags import MANAGE_VOLUME
 from plugin_methods import plugin_select_arg
-from plugin_system import ActionPlugin, ActionBookPlugin
+from plugin_system import ActionBookSpecificPlugin, ActionBookGeneralPlugin
 from plugins.book_update_contents import group_books_by_processor, interleave_books
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
@@ -15,14 +14,13 @@ from thread_utils import TaskWrapper
 from volume_queries import find_book_by_id
 
 
-class CheckAllTagsTask(ActionPlugin):
+class CheckAllTagsTask(ActionBookGeneralPlugin):
     """
     This is used to download new book content from the Internet (All Books).
     """
 
     def __init__(self):
         super().__init__()
-        self.processors = []
         self.prefix_lang_id ='bktagall'
 
     def get_sort(self):
@@ -78,9 +76,6 @@ class CheckAllTagsTask(ActionPlugin):
     def is_ready(self):
         return platform.system() == 'Linux'
 
-    def absorb_config(self, config):
-        self.processors = config[APP_KEY_PROCESSORS]
-
     def create_task(self, db_session: Session, args):
 
         results = []
@@ -101,14 +96,13 @@ class CheckAllTagsTask(ActionPlugin):
         return results
 
 
-class UpdateSingleTagsTask(ActionBookPlugin):
+class UpdateSingleTagsTask(ActionBookSpecificPlugin):
     """
     This is used to download new book content from the Internet (Single Book).
     """
 
     def __init__(self):
         super().__init__()
-        self.processors = []
         self.prefix_lang_id = 'bktagall'
 
     def is_book(self):
@@ -150,10 +144,7 @@ class UpdateSingleTagsTask(ActionBookPlugin):
         return None
 
     def is_ready(self):
-        return platform.system() == 'Linux'
-
-    def absorb_config(self, config):
-        self.processors = config[APP_KEY_PROCESSORS]
+        return super().is_ready() and platform.system() == 'Linux'
 
     def get_feature_flags(self):
         return MANAGE_VOLUME
@@ -186,7 +177,7 @@ class CheckBookTagsTask(TaskWrapper):
         book = find_book_by_id(self.book_id, db_session)
 
         if book is not None:
-            bd = VolumeProcessor(self.processors, '', self)
+            bd = VolumeProcessor(self.processors, '', 'PNG', self)
             status = bd.get_tags(book, self.token)
             if status is not None and status:
                 self.info('Book tags updates')

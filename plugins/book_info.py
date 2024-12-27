@@ -5,13 +5,13 @@ from flask_sqlalchemy.session import Session
 from auth_utils import get_uid
 from db import Book
 from feature_flags import MANAGE_VOLUME
-from plugin_system import ActionPlugin
+from plugin_system import ActionBookGeneralPlugin
 from thread_utils import TaskWrapper
 from volume_queries import list_books_for_rating
 from volume_utils import get_volume_max_rating
 
 
-class UpdateAllTagsTask(ActionPlugin):
+class UpdateAllTagsTask(ActionBookGeneralPlugin):
     """
     This is used to get information about each book and log it.
     """
@@ -44,14 +44,8 @@ class UpdateAllTagsTask(ActionPlugin):
     def process_action_args(self, args):
         return None
 
-    def absorb_config(self, config):
-        pass
-
     def get_feature_flags(self):
         return MANAGE_VOLUME
-
-    def get_category(self):
-        return 'book'
 
     def create_task(self, db_session: Session, args):
         return BookDetails("BookDetails", 'All')

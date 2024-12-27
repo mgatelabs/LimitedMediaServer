@@ -3,7 +3,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from thread_utils import TaskWrapper, NoOpTaskWrapper
+from thread_utils import TaskWrapper
 
 
 def resize_image(input_path, output_path, target_width):
@@ -95,88 +95,57 @@ def crop_and_resize(input_path, output_path, size, side=False):
     print(f"Image cropped and resized, saved to {output_path}")
 
 
-def convert_images_to_png(folder_path, logger: TaskWrapper = NoOpTaskWrapper()):
+def convert_images_to_format(input_folder: str, image_format: str, logger: TaskWrapper) -> bool:
     """
-    Convert all image files in the given folder and its subfolders to PNG format.
-    Removes files with non-standard extensions.
-
-    Args:
-        folder_path (str): Path to the folder containing image files.
-        logger (TaskWrapper): Logger for tracing and debugging.
-
-    Returns:
-        None
+    Converts all images in the given folder to the specific format.
+    Keeps the same filename but changes the extension.
     """
-    for root, dirs, files in os.walk(folder_path):
-        for file in files:
-            source_path = os.path.join(root, file)
-            if file.lower().endswith(".jpg") or file.lower().endswith(".jpeg") or file.lower().endswith(
-                    ".png") or file.lower().endswith(".webp"):
-                if logger.can_trace():
-                    logger.trace(f'{source_path} had a known image extension')
-                dest_path = os.path.splitext(source_path)[0] + ".png"
-                convert_image_to_png(source_path, dest_path, logger)
-            else:
-                if logger.can_trace():
-                    logger.trace(f'{source_path} did not have a standard extension, removing file')
-                os.remove(source_path)
+    result = False
 
+    # Ensure the folder exists
+    if not os.path.isdir(input_folder):
+        logger.error(f"Error: The folder '{input_folder}' does not exist.")
+        return result
 
-def convert_image_to_png(source_file, destination_file, logger: TaskWrapper = NoOpTaskWrapper()):
-    """
-    Convert a single image file to PNG format.
-    Removes the source file if it is less than 10 KB or if an error occurs.
-
-    Args:
-        source_file (str): Path to the source image file.
-        destination_file (str): Path to save the converted PNG file.
-        logger (TaskWrapper): Logger for tracing and debugging.
-
-    Returns:
-        bool: True if conversion was successful, False otherwise.
-    """
-    try:
-
-        # Ensure the source file is within the expected directory
-        source_path = Path(source_file).resolve()
-        destination_path = Path(destination_file).resolve()
-        if not source_path.is_file() or not source_path.exists():
-            logger.set_failure()
-            logger.critical(f'{source_file} is not a valid file')
-            return False
-
-        # Check if the file size is less than 10 KB
-        if source_path.stat().st_size < 10 * 1024:
-            if logger.can_trace():
-                logger.trace(f'Erasing file {source_file} since it is less than 10KB')
-            source_path.unlink()
-            return False
-
-        # Try to open the image
-        with Image.open(source_file) as img:
-            # Convert the image to RGB if it's not already in a mode suitable for PNG (e.g., 'P', 'RGBA')
-            if img.mode not in ("RGB", "RGBA"):
-                if logger.can_trace():
-                    logger.trace(f'{source_file} was not in the correct color mode')
-                img = img.convert("RGB")
-
-            # Remove the source file before saving (in case it's the same as the destination)
-            os.remove(source_file)
-
-            # Save the image as PNG to the destination
-            img.save(destination_path, format="PNG")
-
-        return True
-
-    except (OSError, IOError) as e:
-        # If the image can't be opened or processed, erase the source file
-        if os.path.exists(source_file):
-            os.remove(source_file)
-
-        logger.set_failure()
-        logger.critical(str(e))
-
+    # Supported image formats
+    if image_format == 'WEBP':
+        extension = '.webp'
+        supported_formats = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')
+    elif image_format == 'PNG':
+        extension = '.png'
+        supported_formats = ('.jpg', '.jpeg', '.webp', '.bmp', '.tiff')
+    else:
+        logger.error('Unknown Image Output Format')
         return False
+
+    # Process each file in the folder
+    files = os.listdir(input_folder)
+    total = len(files)
+    count = 0
+    for filename in files:
+        filepath = os.path.join(input_folder, filename)
+        count = count + 1
+        logger.update_percent((count / total) * 100.0)
+        if os.path.isfile(filepath) and filename.lower().endswith(supported_formats):
+            try:
+                with Image.open(filepath) as img:
+                    # Generate output file path with .webp extension
+                    output_path = os.path.splitext(filepath)[0] + extension
+
+                    # Save image in non-lossy WebP format
+                    img.save(output_path, format=image_format, lossless=True)
+
+                    result = True
+
+                    if logger.can_trace():
+                        logger.error(f"Converted '{filename}' to '{os.path.basename(output_path)}'")
+                # Remove the source file
+                os.remove(filepath)
+
+            except Exception as e:
+                print(f"Failed to convert '{filename}': {e}")
+
+    return result
 
 
 def clean_images_folder(folder_path, logger: TaskWrapper):
@@ -227,6 +196,15 @@ def split_and_save_image(image_path: str, position: int, is_horizontal: bool, ke
     :param keep_first: True to keep the Top/Left image
     :return:
     """
+
+    if image_path.lower().endswith('.png'):
+        format_value = 'PNG'
+    elif image_path.lower().endswith('.webp'):
+        format_value = 'WEBP'
+    else:
+        # Wrong ending
+        return False
+
     # Load the image
     with Image.open(image_path) as img:
         # Get dimensions
@@ -242,7 +220,7 @@ def split_and_save_image(image_path: str, position: int, is_horizontal: bool, ke
             if position <= 0 or position >= width:
                 raise ValueError(f"Position {position} is out of bounds for image width {width}.")
 
-        #left, top, right, bottom
+        # left, top, right, bottom
 
         # Define the box for cropping
         if is_horizontal:
@@ -262,11 +240,21 @@ def split_and_save_image(image_path: str, position: int, is_horizontal: bool, ke
         cropped_img = img.crop(box)
 
         # Save the cropped image, overwriting the original with PNG format
-        cropped_img.save(image_path, format="PNG")
+        cropped_img.save(image_path, format=format_value, lossless=True)
 
 
-def merge_two_images(image_a_path, image_b_path):
+def merge_two_images(image_a_path: str, image_b_path: str):
     try:
+        if image_a_path.lower().endswith('.png'):
+            extension = '.png'
+            format_value = 'PNG'
+        elif image_a_path.lower().endswith('.webp'):
+            extension = '.webp'
+            format_value = 'WEBP'
+        else:
+            # Wrong ending
+            return False
+
         # Open both images
         image_a = Image.open(image_a_path)
         image_b = Image.open(image_b_path)
@@ -286,8 +274,8 @@ def merge_two_images(image_a_path, image_b_path):
         new_image.paste(image_b, (0, image_a.height))
 
         # Overwrite A's path with a PNG extension
-        output_path = os.path.splitext(image_a_path)[0] + ".png"
-        new_image.save(output_path, "PNG")
+        output_path = os.path.splitext(image_a_path)[0] + extension
+        new_image.save(output_path, format_value, lossless=True)
 
         # Delete image B
         os.unlink(image_b_path)

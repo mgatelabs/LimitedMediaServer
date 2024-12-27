@@ -2,7 +2,6 @@ from bs4 import BeautifulSoup
 
 from db import Book
 from html_utils import download_secure_text
-from image_utils import convert_images_to_png
 from number_utils import pad_integer_number
 from processors.processor_core import CustomDownloadInterface
 from thread_utils import TaskWrapper
@@ -63,10 +62,6 @@ class SampleProcessor(CustomDownloadInterface):
         """
 
         return []
-
-    def clean_folder(self, definition: Book, chapter, path):
-        # Generally all images should be PNG, so lets just convert everything.  Also remove any pesky metadata.
-        convert_images_to_png(path, self.task_wrapper)
 
     def get_tags(self, definition: Book, headers=None):
         """

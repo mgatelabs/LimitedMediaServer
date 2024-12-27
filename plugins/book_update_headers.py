@@ -3,13 +3,13 @@ import argparse
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_APP
-from plugin_system import ActionPlugin
+from plugin_system import ActionBookGeneralPlugin
 from plugin_methods import plugin_long_string_arg
 from thread_utils import TaskWrapper
 from volume_utils import parse_curl_headers, save_headers_to_json
 import platform
 
-class UpdateHeaders(ActionPlugin):
+class UpdateHeaders(ActionBookGeneralPlugin):
     """
     We use headers from Chrome to access protected webpages.  This updates the local header definition file.
     """
@@ -63,7 +63,7 @@ class UpdateHeaders(ActionPlugin):
         return 'book'
 
     def is_ready(self):
-        return platform.system() == 'Linux'
+        return super().is_ready() and platform.system() == 'Linux'
 
     def create_task(self, db_session: Session, args):
         return UpdateVolumeHeader(args['headers'])

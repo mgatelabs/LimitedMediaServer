@@ -1,10 +1,12 @@
 from flask_sqlalchemy.session import Session
 
+import platform
 from typing import Optional
 from app_properties import AppPropertyDefinition
 from constants import PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, \
     PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_SECRET_KEY, PROPERTY_SERVER_HOST_KEY, \
-    PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_VOLUME_FOLDER
+    PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_VOLUME_FOLDER, \
+    PROPERTY_SERVER_VOLUME_FORMAT
 from db import AppProperties, User, UserLimit, db, UserHardSession
 from text_utils import is_not_blank
 
@@ -49,7 +51,12 @@ def get_server_port(override_value: int = 0) -> int:
     except ValueError:
         pass
     # Fallback to default
-    return 80
+
+    # For linux systems, port 80 is special, so need to switch to 5000
+    if platform.system() == 'Linux':
+        return 5000
+    else:
+        return 80
 
 
 def get_server_host() -> str:
@@ -117,6 +124,16 @@ def get_volume_folder() -> str:
     if is_not_blank(value):
         return value
     return ""
+
+
+def get_volume_format() -> str:
+    """
+    Get the path for the temp show folder
+    """
+    value = _get_attr_value(PROPERTY_SERVER_VOLUME_FORMAT)
+    if is_not_blank(value):
+        return value
+    return "PNG"
 
 
 def get_plugin_value(property_id: str) -> str:

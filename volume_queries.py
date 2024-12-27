@@ -3,7 +3,7 @@ from typing import Optional, List, Tuple
 import logging
 
 from flask_sqlalchemy.session import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import aliased
 
@@ -205,7 +205,13 @@ def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Op
         query = query.filter(Book.rating <= max_rating)
 
     if is_not_blank(filter_text):
-        query = query.filter(Book.name.like(f'%{filter_text}%'))
+        query = query.filter(
+            or_(
+                Book.name.like(f'%{filter_text}%'),
+                Book.id.like(f'%{filter_text}%'),
+                Book.tags.like(f'%{filter_text}%')
+            )
+        )
 
     return query
 
@@ -248,7 +254,13 @@ def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_t
         query = query.filter(Book.rating <= max_rating)
 
     if is_not_blank(filter_text):
-        query = query.filter(Book.name.like(f'%{filter_text}%'))
+        query = query.filter(
+            or_(
+                Book.name.like(f'%{filter_text}%'),
+                Book.id.like(f'%{filter_text}%'),
+                Book.tags.like(f'%{filter_text}%')
+            )
+        )
 
     return query
 

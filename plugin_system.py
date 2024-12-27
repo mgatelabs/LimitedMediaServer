@@ -4,8 +4,9 @@ from flask_sqlalchemy.session import Session
 
 from app_properties import AppPropertyDefinition
 from constants import PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, \
-    PROPERTY_SERVER_MEDIA_TEMP_FOLDER
+    PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_VOLUME_FOLDER, PROPERTY_SERVER_VOLUME_FORMAT, APP_KEY_PROCESSORS
 from plugin_methods import plugin_media_folder_display_arg, add_logging_arg, plugin_string_arg
+from text_utils import is_not_blank
 
 
 # Base class for all action plugins
@@ -135,17 +136,66 @@ class ActionSeriesPlugin(ActionPlugin):
 
 
 # Subclass for book action plugins
-class ActionBookPlugin(ActionPlugin):
+class ActionBookGeneralPlugin(ActionPlugin):
     """
-    This is a subclass for Context based Plugins. These are accessible from the Book/Video Series page.
+    This is a subclass for Non-specific Book based Plugins. These are accessible from the global Book plugins menu.
     """
 
     def __init__(self):
         super().__init__()
         self.type = 'ACTIONBOOK'
+        self.book_storage_folder = ''
+        self.book_storage_format = 'PNG'
+        self.processors = []
+
+    def get_action_args(self):
+        return []
+
+    def absorb_config(self, config):
+        """
+        Absorb configuration settings.
+        """
+        super().absorb_config(config)
+        self.book_storage_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
+        self.book_storage_format = config[PROPERTY_SERVER_VOLUME_FORMAT]
+        self.processors = config[APP_KEY_PROCESSORS]
+
+    def is_ready(self):
+        return super().is_ready() and is_not_blank(self.book_storage_folder) and is_not_blank(self.book_storage_format)
+
+    def get_category(self):
+        return 'book'
+
+    def is_standalone(self):
+        """
+        General are Standalone
+        :return: True
+        """
+        return True
+
+# Subclass for book action plugins
+class ActionBookSpecificPlugin(ActionPlugin):
+    """
+    This is a subclass for Context based Plugins. These are accessible from the Book Series page.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.type = 'ACTIONBOOK'
+        self.book_storage_folder = ''
+        self.book_storage_format = 'PNG'
+        self.processors = []
 
     def get_action_args(self):
         return [plugin_string_arg("Book ID", "book_id", 'The Book to process', 'com')]
+
+    def absorb_config(self, config):
+        """
+        Absorb configuration settings.
+        """
+        self.book_storage_folder = config[PROPERTY_SERVER_VOLUME_FOLDER]
+        self.book_storage_format = config[PROPERTY_SERVER_VOLUME_FORMAT]
+        self.processors = config[APP_KEY_PROCESSORS]
 
     def get_category(self):
         return 'book'

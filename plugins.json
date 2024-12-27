@@ -1,5 +1,75 @@
 [
     {
+        "id": "action.convert.format",
+        "icon": "style",
+        "name": "Convert Format",
+        "args": [
+            {
+                "name": "Book ID",
+                "id": "book_id",
+                "type": "string",
+                "description": "The Book to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": false,
+        "prefix_lang_id": "bkconvfmt"
+    },
+    {
         "id": "action.book.status",
         "icon": "toggle_on",
         "name": "Check Book Status",
@@ -67,7 +137,7 @@
         ],
         "category": "book",
         "standalone": false,
-        "prefix_lang_id": ""
+        "prefix_lang_id": "bkact"
     },
     {
         "id": "action.book.tags",
