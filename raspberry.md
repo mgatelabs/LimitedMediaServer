@@ -163,3 +163,32 @@ If everything is plugged in right, the PI device will startup once you attach th
 * Hit "OK"
 9. *Setup Complete*
 * This phase is done, hit "Restart"
+10. Wait a bit and you should see a *desktop*, we are just getting ready, see the next section to continue.
+
+### 04. Getting Ready for NVMe Booting
+
+1. From the Desktop bring up the Terminal
+
+![image](https://github.com/user-attachments/assets/56b8226e-a0e2-478d-a936-4053145c029c)
+
+2. First, ensure that your Raspberry Pi runs the latest software. Run the following command to update:
+
+```bash
+sudo apt update && sudo apt full-upgrade
+```
+
+3. Next, ensure that your Raspberry Pi firmware is up-to-date.
+
+run the following command to open the Raspberry Pi Configuration CLI:
+
+```bash
+sudo raspi-config
+```
+
+Under *Advanced Options* > *Bootloader Version*, choose *Latest*. Then, exit raspi-config with Finish or the Escape key.
+
+Run the following command to update your firmware to the latest version:
+
+```bash
+sudo rpi-eeprom-update -a
+```
