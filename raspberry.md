@@ -102,3 +102,64 @@ This is only needed for the initial setup and after that everything will be done
 ### 10. Monitor / TV
 
 This is only needed for the initial setup and after that everything will be done via remote connections.
+
+## Instructions
+
+### 00. Purchase
+
+1. Raspberry PI 5 (4 or 8 GIG, but more ram better)
+2. Case
+3. NVMe HAT (Some cases come with these)
+4. NVMe Drive (Not SATA)
+5. Power Supply
+6. External Hard Drive (Large)
+7. Micro HDMI Cable
+8. Noobs SD Card (Optional, you can burn your own)
+
+Also have a:
+1. Keyboard
+2. Mouse
+3. Monitor with HDMI input
+4. Ethernet Cable (Optional)
+
+### 01. Assembly
+
+Put your Raspberry PI + NVMe Hat + NVMe Drive + Case together.
+
+### 02. Attach
+
+1. Insert Noobs SD Card
+2. External Drive
+3. Mouse
+4. Keyboard
+5. Monitor (Via Micro HDMI Cable)
+6. Ethernet Cable (If available)
+7. Power Cord
+
+### 03. Power Up
+
+If everything is plugged in right, the PI device will startup once you attach the power cord and the screen should show something.
+
+#### Run through the NOOBS installation wizard.
+
+1. *Welcome Screen*
+*. Hit *Next*
+2. *Set Country*
+* Choose your Country, Language and Timezone
+* Hit *Next*
+3. *Create User*
+* This user account is just for setup, keep it simple:
+* username: admin
+* password: admin
+* Hit *Next*
+4. *Select WiFi Network*
+* I'm just going to *Skip* this step and use a wired connection
+5. *Choose Browser*
+* This step isn't critical, you can just hit *Next*
+6. *Update Software*
+* It never hurts to have up to date software, so just hit *Next*
+7. Wait for Updates to Finish
+8. System is up to date Popup
+* Hit "OK"
+9. *Setup Complete*
+* This phase is done, hit "Restart"
