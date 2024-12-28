@@ -353,3 +353,139 @@ Navigate to *Advanced Options* > *PCIe Speed* > *Yes* > *OK*
 
 You need to *Finish* the config tool and reboot when offered.
 
+### 08. Required Server Software
+
+Everything here will be from the Putty Terminal.
+
+#### Getting Ready
+
+Make sure your libraries and software are up to date
+
+```bash
+sudo apt update && sudo apt upgrade -y
+```
+
+#### GIT
+
+Git is already Installed, so no action required
+
+You can verify if GIT is installed via this command
+
+```bash
+git --version
+```
+
+#### Python 3 & Pip
+
+Python 3 should already be available, so we just need to install PIP
+
+```bash
+sudo apt install python3-pip -y
+```
+
+You can verify if Python3 and PIP were installed via this command
+
+```bash
+python3 --version
+pip3 --version
+```
+
+#### NodeJs and NPM
+
+```bash
+sudo apt install nodejs npm -y
+```
+
+You can verify if NODEJS and NPM were installed via this command
+
+```bash
+node -v
+npm -v
+```
+
+### 09. Mounting your External Hard drive
+
+You have all that extra storage, we need to make sure it's available.
+
+#### 1. Identify the External Drive
+
+First, list all connected drives:
+
+```bash
+lsblk -o NAME,FSTYPE,SIZE,MOUNTPOINT,LABEL
+```
+
+* Look for your external drive (e.g., sda, sdb).
+* Ensure you identify the correct drive, as formatting will erase all data.
+  - Example: /dev/sda or /dev/sdb1
+
+#### 2. Format the Drive as ext4
+
+Format the drive with mkfs.ext4:
+
+```bash
+sudo mkfs.ext4 /dev/sdX1
+```
+
+* Replace /dev/sdX1 with your partition name (e.g., sda1).
+* If the drive doesn’t have partitions (e.g., just /dev/sda), you can format the entire disk.
+
+####  3. Create the Mount Point
+
+Create the mount directory:
+
+```bash
+sudo mkdir -p /mnt/external
+```
+
+#### 4. Configure Automount via /etc/fstab
+
+Find the UUID of the Drive
+
+```bash
+sudo blkid /dev/sdX1
+```
+
+Look for the *UUID="XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"*
+
+##### Edit `/etc/fstab`
+
+Open the fstab file:
+
+```bash
+sudo nano /etc/fstab
+```
+
+Add the following line at the bottom:
+
+```text
+UUID=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX /mnt/external ext4 defaults,noatime 0 2
+```
+
+##### Explanation:
+* `defaults`: Standard mount options.
+* `noatime`: Prevents writing file access times for better performance.
+* `0`: Skip dump (backup utility).
+* `2`: Run fsck (filesystem check) after boot, if needed.
+
+#### 5. Test / Mount
+
+Use the following command to re-load your fstab file
+
+```bash
+sudo systemctl daemon-reload
+```
+
+With everything reloaded, you can use the following command to verify that your drive has been mounted correctly
+
+```bash
+df -h /mnt/external
+```
+
+#### 6. Permissions
+
+You might as well claim the drive for the ADMIN user, who will run all services, issue this command
+
+```bash
+sudo chown -R admin:admin /mnt/external
+```
