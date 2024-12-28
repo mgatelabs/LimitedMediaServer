@@ -270,7 +270,7 @@ Press *Enter*
 
 exit raspi-config with Finish
 
-It will ask if you you *Would ou like to reboot now?*, Hit Yes
+It will ask if you you *Would you like to reboot now?*, Hit Yes
 
 Wait for a few cycles and you will eventually be sitting on a terminal based login prompt.  Take note of the IP address, you will need this for later.
 
@@ -342,7 +342,7 @@ At this point just Hit *Login* and it should present you with a file browser in 
 
 ### 07. (Optional) Enable Gen 3 Speeds
 
-By default the Raspberry PI 5 supports Gen 2 speeds, but it can achieve Gen 3, but it's not certified.
+By default the Raspberry PI 5 supports Gen 2 speeds, but it can achieve Gen 3, but it's not fully supported.
 
 1. Open Your Putty Terminal to the Server
 2. Enter the following command
@@ -352,3 +352,4 @@ sudo raspi-config
 Navigate to *Advanced Options* > *PCIe Speed* > *Yes* > *OK*
 
 You need to *Finish* the config tool and reboot when offered.
+
