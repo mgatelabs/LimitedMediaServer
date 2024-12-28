@@ -489,3 +489,58 @@ You might as well claim the drive for the ADMIN user, who will run all services,
 ```bash
 sudo chown -R admin:admin /mnt/external
 ```
+
+#### 7. Folders
+
+You might as well create the folders needed for Limited Media Server.  You will also need these paths later when setting up the various properties.
+
+#### Description of folders
+* `/home/admin/data/primary`
+  - Used to store media on your fast drive.
+  - For `SERVER.MEDIA.PRIMARY.FOLDER` property.
+* `/home/admin/data/temp`
+  - Used for processing, should be on a fast drive.
+  - For `SERVER.MEDIA.TEMP.FOLDER` property.
+* `/home/admin/data/books`
+  - Where books wil be stored.
+  - For `SERVER.VOLUME.FOLDER` property.
+* `/mnt/external/data/archive`
+  - This is where media you don't need quick access to should be stored.
+  - For `SERVER.MEDIA.ARCHIVE.FOLDER` property.
+
+```bash
+sudo mkdir -p /home/admin/data/primary
+sudo mkdir -p /home/admin/data/temp
+sudo mkdir -p /home/admin/data/books
+sudo mkdir -p /mnt/external/data/archive
+```
+
+### 10. Installing Limited Media Server (From Source)
+
+Start in Putty in your Admin's home directory, the default folder when you login.
+
+You can issue the following command to install limited media server and start it up.
+
+```bash
+git clone https://github.com/mgatelabs/LimitedMediaServer.git
+git clone https://github.com/mgatelabs/LimitedMediaServerSite.git
+cd LimitedMediaServerSite
+npm install
+ng build
+cd ..
+cd LimitedMediaServer
+pip install -r requirements.txt --break-system-packages
+python server.py
+```
+
+If everything worked you should be able to open a browser to http://IP_ADDRESS:5000 and view the login page.
+
+At this point you can use the [basic install instructions found](https://github.com/mgatelabs/LimitedMediaServer/blob/main/README.md#basic-setup).  For the initial user to login as and how to setup the various properties.
+
+#### What else should you considder?
+
+Look at `[Advanced Development Configuration](https://github.com/mgatelabs/LimitedMediaServer?tab=readme-ov-file#advanced-development-configuration)`, to make the app run as a service.  So even after reboot, it's available.
+
+Look at [Securing your server](https://github.com/mgatelabs/LimitedMediaServer/blob/main/README.md#securing-your-server) to setup a nginx proxy to allow HTTP port 80 access, and HTTPS port 443 access.
+
+Setting up a VPN, to be continued.
