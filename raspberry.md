@@ -192,3 +192,163 @@ Run the following command to update your firmware to the latest version:
 ```bash
 sudo rpi-eeprom-update -a
 ```
+
+You need to reboot the device.
+
+### 05. Imaging your NVMe Drive
+
+1. From the desktop open the Raspberry Pi Imager
+
+From the Top LEFT, *Raspberry Icon* > *Accessories* > *Raspberry Pi Imager*
+
+![image](https://github.com/user-attachments/assets/b2fa30ab-7ec7-42a0-8cc9-45fef8ad35fc)
+
+2. Choose your Device
+
+You need to select Raspberry PI 5
+
+3. Choose your OS
+
+You need to select *Raspberry Pi OS (other)* > *Raspberry Pi OS Lite (64-bit)*
+
+4. Choose your Storage
+
+If everything has worked, the PI should detect your NVMe drive and display it in the list.  If it is not in the list, either your previous step to update the ROM wasn't completed, or the device is not compatiable.
+
+5. Choices
+
+Hit *Next*
+
+Hit *Edit Settings*
+
+6. OS Configuration
+
+#### One the 1st Tab
+
+* Set Hostname: Give it a name, for example *limitedmediaserver*.
+* Set a username and password.  I would keep the username as admin, but actually come up with a password for your device.
+* You don't need to fill in the Wireless LAN portion if you plan on using wired internet.
+* Set locale settings.  Just fill it in.
+
+#### On the 2nd Tab *Services*
+
+* Enable SSH (Check This) and keep it as *Use Password Authentication*
+
+#### On the third Tab
+
+Disable *Telemetry*, no need to phone home.
+
+Finally hit *Save*
+
+On the previous Popup hit *YES*
+
+It will confirm that add data on your device will be wiped erased, hit *YES*
+
+At this point you will be asked to provide your password a few times, it should be *admin*, if you followed the initial NOOBS setup instructions.
+
+Just wait it out...
+
+It should popup a dialog about *Write Successful*, hit *CONTINUE*
+
+At this point your NVMe drive is ready, but, you need to swap the boot drive from SD to NVME, see the next set of instructions.
+
+### 05. Enabling NVMe Booting
+
+1. Open the Terminal
+
+```bash
+sudo raspi-config
+```
+
+Navigate to *Advanced Options* > *Boot Order* > *NVMe/USB Boot*
+
+Wait a bit...
+
+Get a notice *NVMe/USB is default boot device*
+
+Press *Enter*
+
+exit raspi-config with Finish
+
+It will ask if you you *Would ou like to reboot now?*, Hit Yes
+
+Wait for a few cycles and you will eventually be sitting on a terminal based login prompt.  Take note of the IP address, you will need this for later.
+
+Your device is now botting off the NVMe drive.  Good Job!  We're going to leave the physical connection and instead remote SSH into the device from a windows machine.
+
+### 05.B Extra Work
+
+#### How to Set Up a Static Local IP Address for Your Network Device
+
+Setting a static local IP address ensures that your server or device retains the same IP address within your network. This is essential for advanced services like VPN access or remote server connections. The process varies depending on your router model, but the general steps remain consistent.
+
+#### General Instructions for Setting a Static Local IP Address
+
+1. Access Your Router's Configuration Page
+* Open a web browser and enter your router's IP address (commonly 192.168.0.1 or 192.168.1.1).
+* Log in using the administrator username and password. Refer to your router's manual if you're unsure of these credentials.
+
+2. Locate the DHCP Settings
+* Navigate to the section for DHCP (Dynamic Host Configuration Protocol) or LAN settings.
+* Look for options like "Address Reservation," "Static IP," or "DHCP Reservation."
+
+3. Assign a Static IP Address
+* Identify your device in the list of connected devices or enter its MAC address manually.
+* Specify the desired static IP address (e.g., 192.168.1.100) within the range of your local network but outside the DHCP allocation range.
+* Save the changes.
+
+4. Reboot the Device
+* Restart the device to ensure it adopts the new static IP address.
+
+### 06. Windows Tools
+
+#### Install
+
+Install Putty & WinSCP, link were provided earlier in the document.  WinSCP isn't needed at the moment, but if you want to transfer files between devices, it's neccessary.
+
+#### Putty Setup
+
+![image](https://github.com/user-attachments/assets/ad350e32-83ac-4e18-bde5-7efbc50f130b)
+
+0. Run Putty
+1. Enter the server's IP Address, you should have noted it down from the previous step.  Or have assigned it a static IP address as mentioned in *Extra Work*
+2. You should give this session a name like *Limited Media Server*
+3. Hit *Save*, this allows you to store a preset, so next time you can skip some steps
+4. Hit *Open*
+
+If everything worked, you should be prompted to enter a username and password
+
+#### WinSCP Setup
+
+![image](https://github.com/user-attachments/assets/48736405-a03a-42b4-90ed-f2202ef944b9)
+
+0. Run WinSCP
+1. Click *New Site*
+2. Fill in the *Host name*
+3. Fill in the *Username*
+4. Fill in the *Password*
+5. Hit Save
+
+![image](https://github.com/user-attachments/assets/f5fb3922-9fec-4c7f-88b4-50ccc5dd1c3c)
+
+1. Give it a decent Site Name, maybe *Limited Media Server*
+2. This is upto you, but if you don't want to type the password every time, click it
+3. This is also optional, but it would save you time
+4. Hit OK
+
+![image](https://github.com/user-attachments/assets/0ffd4b15-340c-453f-b931-31e6e2ae0ca2)
+
+At this point just Hit *Login* and it should present you with a file browser in the Home directory
+
+### 07. (Optional) Enable Gen 3 Speeds
+
+By default the Raspberry PI 5 supports Gen 2 speeds, but it can achieve Gen 3, but it's not certified.
+
+1. Open Your Putty Terminal to the Server
+2. Enter the following command
+```bash
+sudo raspi-config
+```
+Navigate to *Advanced Options* > *PCIe Speed* > *Yes* > *OK*
+
+You need to *Finish* the config tool and reboot when offered.
