@@ -539,7 +539,7 @@ At this point you can use the [basic install instructions found](https://github.
 
 #### What else should you considder?
 
-Look at `[Advanced Development Configuration](https://github.com/mgatelabs/LimitedMediaServer?tab=readme-ov-file#advanced-development-configuration)`, to make the app run as a service.  So even after reboot, it's available.
+Look at [Advanced Development Configuration](https://github.com/mgatelabs/LimitedMediaServer?tab=readme-ov-file#advanced-development-configuration), to make the app run as a service.  So even after reboot, it's available.
 
 Look at [Securing your server](https://github.com/mgatelabs/LimitedMediaServer/blob/main/README.md#securing-your-server) to setup a nginx proxy to allow HTTP port 80 access, and HTTPS port 443 access.
 
