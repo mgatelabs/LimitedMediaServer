@@ -247,7 +247,7 @@ git pull
 pip install -r requirements.txt
 ```
 
-If everything is worked, open your browser to http://serveraddress/, for your local machine it would be [http://localhost](http://localhost).
+If everything is worked, open your browser to http://serveraddress:5000/ (Linux), http://serveraddress/ (Windows), for your local windows machine it would be [http://localhost](http://localhost).
 
 ### User Setup
 
@@ -552,19 +552,32 @@ Replace the contents with this example configuration:
 
 ```text
 server {
-    listen 443 ssl;
-    server_name your_domain.com;
-    client_max_body_size 1600M; #1.6 gigs
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
+    listen 80;
+    server_name limitedmediaserver;
+    client_max_body_size 1600M;
     location / {
-        proxy_pass http://127.0.0.1:80; # Port your Flask app is running on
+        proxy_pass http://127.0.0.1:5000; # Port your Flask app is running on
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
 }
+
+server {
+    listen 443 ssl;
+    server_name limitedmediaserver;
+    client_max_body_size 1600M;
+    ssl_certificate /home/admin/ssl/cert.pem;
+    ssl_certificate_key /home/admin/ssl/key.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:5000; # Port your Flask app is running on
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+
 ```
 
 Note: Replace /path/to/cert.pem and /path/to/key.pem with the actual paths to your SSL certificate and key files.
