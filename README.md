@@ -500,10 +500,15 @@ For a local server, generating a self-signed certificate is a quick and cost-eff
 You can generate an SSL certificate pair (certificate and key) that will last for 365 days with the following command:
 
 ```bash
+mkdir /home/admin/ssl/
+cd /home/admin/ssl/
 openssl req -x509 -newkey rsa:4096 -nodes -out cert.pem -keyout key.pem -days 365
+cd /home/admin/
 ```
 
-After it expires, you can re-issue the command to make a new pair.
+We put the cert into a `ssl` folder for simplisity.
+
+Also after the cert expires, you can re-issue the command to make a new pair.
 
 ### Step 1: Install Nginx
 
