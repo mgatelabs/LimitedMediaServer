@@ -601,6 +601,44 @@ yt-dlp will eventually stop working and you will need to update it again, use th
 python3 -m pip install -U "yt-dlp[default]" --break-system-packages
 ```
 
+#### curl-impersonate (Downloading Content)
+
+Install dependencies for building all the components:
+
+```bash
+sudo apt install build-essential pkg-config cmake ninja-build curl autoconf automake libtool
+# For the Firefox version only
+sudo apt install python3-pip libnss3
+pip install gyp-next
+export PATH="$PATH:~/.local/bin" # Add gyp to PATH
+# For the Chrome version only
+sudo apt install golang-go unzip
+```
+
+Clone the repository:
+
+```bash
+git clone https://github.com/lwthiker/curl-impersonate.git
+cd curl-impersonate
+```
+
+Configure and compile:
+
+```bash
+mkdir build && cd build
+../configure
+# Build and install the Firefox version
+make firefox-build
+sudo make firefox-install
+# Build and install the Chrome version
+make chrome-build
+sudo make chrome-install
+# You may need to update the linker's cache to find libcurl-impersonate
+sudo ldconfig
+# Optionally remove all the build files
+cd ../ && rm -Rf build
+```
+
 #### What else should you considder?
 
 Look at [Advanced Development Configuration](https://github.com/mgatelabs/LimitedMediaServer?tab=readme-ov-file#advanced-development-configuration), to make the app run as a service.  So even after reboot, it's available.
