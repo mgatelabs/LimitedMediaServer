@@ -572,7 +572,34 @@ After installation, verify that FFmpeg is installed correctly by checking its ve
 ffmpeg -version
 ```
 
-If installed successfully, you'll see information about the FFmpeg version.
+#### YT-DLP (Downloading Content)
+
+#### 1. Installation
+
+You can install the PyPI package with:
+
+```bash
+python3 -m pip install -U "yt-dlp[default]" --break-system-packages
+```
+
+
+##### 2. Verify the Installation
+
+After installation, verify that yt-dlp is installed correctly by checking its version:
+
+```bash
+yt-dlp --version
+```
+
+If installed successfully, you'll see information about the yt-dlp version.
+
+##### 3. Updating
+
+yt-dlp will eventually stop working and you will need to update it again, use the following command to refresh the insstall.
+
+```bash
+python3 -m pip install -U "yt-dlp[default]" --break-system-packages
+```
 
 #### What else should you considder?
 
