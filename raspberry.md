@@ -543,6 +543,37 @@ If everything worked you should be able to open a browser to http://IP_ADDRESS:5
 
 At this point you can use the [basic install instructions found](https://github.com/mgatelabs/LimitedMediaServer/blob/main/README.md#basic-setup).  For the initial user to login as and how to setup the various properties.
 
+#### More Software
+
+#### FFMPEG (Video Encoding & Downloading)
+
+#####  1. Update Your System
+First, make sure your Raspberry Pi is up to date:
+
+```bash
+sudo apt update
+sudo apt upgrade -y
+```
+##### 2. Install FFmpeg from the Repository
+
+FFmpeg is available in the default Raspberry Pi OS repositories. Install it with:
+
+```bash
+sudo apt install ffmpeg -y
+```
+
+This will install FFmpeg along with its dependencies.
+
+##### 3. Verify the Installation
+
+After installation, verify that FFmpeg is installed correctly by checking its version:
+
+```bash
+ffmpeg -version
+```
+
+If installed successfully, you'll see information about the FFmpeg version.
+
 #### What else should you considder?
 
 Look at [Advanced Development Configuration](https://github.com/mgatelabs/LimitedMediaServer?tab=readme-ov-file#advanced-development-configuration), to make the app run as a service.  So even after reboot, it's available.
