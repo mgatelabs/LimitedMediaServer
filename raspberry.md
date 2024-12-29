@@ -513,6 +513,12 @@ sudo mkdir -p /home/admin/data/primary
 sudo mkdir -p /home/admin/data/temp
 sudo mkdir -p /home/admin/data/books
 sudo mkdir -p /mnt/external/data/archive
+sudo chown admin:admin /home/admin/data/
+sudo chown admin:admin /home/admin/data/primary
+sudo chown admin:admin /home/admin/data/temp
+sudo chown admin:admin /home/admin/data/books
+sudo chown admin:admin /mnt/external/data
+sudo chown admin:admin /mnt/external/data/archive
 ```
 
 ### 10. Installing Limited Media Server (From Source)
