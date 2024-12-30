@@ -1,6 +1,9 @@
 import logging
 import os
 from typing import Optional
+from datetime import datetime
+import mimetypes
+import shutil
 
 from flask_sqlalchemy.session import Session
 from webvtt import WebVTT
@@ -8,8 +11,9 @@ from webvtt import WebVTT
 from auth_utils import get_user_features, get_user_group_id, get_user_media_limit
 from db import MediaFile, MediaFolder, db
 from feature_flags import MANAGE_APP
-from media_queries import find_folder_by_id, find_file_by_id
+from media_queries import find_folder_by_id, find_file_by_id, insert_file
 from text_utils import is_guid
+from thread_utils import TaskWrapper
 
 
 def clean_files_for_mediafile(file: MediaFile, primary_path: str, archive_path: str):
@@ -270,3 +274,31 @@ def describe_file_size_change(old_size, new_size):
         return f"The file decreased in size by {abs(percentage_change):.2f}% ({old_size_str} to {new_size_str})."
     else:
         return f"The file size did not change ({old_size_str})."
+
+def ingest_file(item_path: str, item_name: str, folder_id: str, is_archive: bool, primary_path: str, archive_path: str, db_session: Session, task_wrapper: TaskWrapper) -> bool:
+    if os.path.isfile(item_path):
+        # Get file size
+        file_size = os.path.getsize(item_path)
+
+        # Get created time and convert to readable format
+        created_time = os.path.getctime(item_path)
+        created_datetime = datetime.fromtimestamp(created_time)
+
+        mime_type, _ = mimetypes.guess_type(item_path)  # MIME type
+
+        if mime_type is not None:
+
+            modified_name = str(item_name)
+
+            new_file = insert_file(folder_id, modified_name, mime_type, is_archive, False,
+                                   file_size, created_datetime, db_session)
+
+            dest_path = get_data_for_mediafile(new_file, primary_path, archive_path)
+
+            shutil.move(str(item_path), str(dest_path))
+
+            return True
+        else:
+            task_wrapper.warn(f'Ignoring file {item_name}, unknown MIME TYPE')
+
+    return False

@@ -1,30 +1,18 @@
 import argparse
-import mimetypes
 import os.path
-import shutil
 import subprocess
-from datetime import datetime
-from urllib.parse import urlparse, parse_qs
 
 from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
 from file_utils import temporary_folder
-from media_queries import find_folder_by_id, insert_file
-from media_utils import get_data_for_mediafile
-from plugin_system import ActionMediaFolderPlugin
+from media_queries import find_folder_by_id
+from media_utils import ingest_file
 from plugin_methods import plugin_string_arg
+from plugin_system import ActionMediaFolderPlugin
 from text_utils import is_blank
 from thread_utils import TaskWrapper
 
-
-def extract_query_variable(url, variable_name):
-    parsed_url = urlparse(url)
-    query_params = parse_qs(parsed_url.query)
-    if variable_name in query_params:
-        return query_params[variable_name][0]  # Return the first value if multiple values are present
-    else:
-        return None  # Variable not found
 
 class DownloadFromYtTask(ActionMediaFolderPlugin):
     """
@@ -56,7 +44,7 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_string_arg('URL', 'url', 'The youtube link to a video.  It should have ?v= in the string.')
+            plugin_string_arg('URL', 'url', 'Link to the video, playlist, page.')
         )
 
         result.append({
@@ -75,10 +63,6 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
 
         if 'url' not in args or args['url'] is None or args['url'] == '':
             results.append('url is required')
-        else:
-            if args['url'].startswith('https://'):
-                v = extract_query_variable(args['url'], 'v')
-                args['url'] = v
 
         if 'dest' not in args or is_blank(args['dest']):
             results.append('dest is required')
@@ -93,7 +77,8 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return DownloadYt("Download YT", 'Downloading from YT ' + args['url'], args['folder_id'], args['url'], args['dest'], self.primary_path,
+        return DownloadYt("Download YT", 'Downloading from YT ' + args['url'], args['folder_id'], args['url'],
+                          args['dest'], self.primary_path,
                           self.archive_path, self.temp_path)
 
 
@@ -124,7 +109,7 @@ class DownloadYt(TaskWrapper):
         with temporary_folder(self.temp_path, self) as temp_folder:
 
             arguments = ['-S', "res,ext:mp4:m4a", '--recode', 'mp4', '--embed-thumbnail',
-                         'https://www.youtube.com/?v=' + self.video]
+                         self.video]
 
             # Run the program with the provided arguments
             process = subprocess.Popen(['yt-dlp'] + arguments, cwd=temp_folder)
@@ -137,32 +122,22 @@ class DownloadYt(TaskWrapper):
             if return_code == '0':
                 self.set_worked()
 
-                for item in os.listdir(temp_folder):
-                    # Get the full path
-                    item_full_path = os.path.join(temp_folder, item)
+                possible_filenames = os.listdir(temp_folder)
 
-                    # Check if it is a file (not a directory)
-                    if os.path.isfile(item_full_path):
-                        # Get file size
-                        file_size = os.path.getsize(item_full_path)
+                by_video_lookup = {'*': possible_filenames}
 
-                        # Get created time and convert to readable format
-                        created_time = os.path.getctime(item_full_path)
-                        created_datetime = datetime.fromtimestamp(created_time)
+                for video_key, sample_list in by_video_lookup.items():
 
-                        mime_type, _ = mimetypes.guess_type(item_full_path)  # MIME type
+                    for item in sample_list:
 
-                        if mime_type is not None:
+                        # Get the full path
+                        item_full_path = os.path.join(temp_folder, item)
 
-                            new_file = insert_file(source_row.id, str(item), mime_type, is_archive, False, file_size,
-                                                   created_datetime, db_session)
+                        if ingest_file(item_full_path, item, source_row.id, is_archive, self.primary_path,
+                                       self.archive_path, db_session, self):
+                            if self.can_debug():
+                                self.debug(f'Ingested: {item}')
 
-                            dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
-
-                            shutil.move(str(item_full_path), str(dest_path))
-
-                        else:
-                            self.warn(f'Ignoring file {item}, unknown MIME TYPE')
             else:
                 self.error(f'Return Code {return_code}')
                 self.set_failure()

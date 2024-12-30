@@ -285,7 +285,7 @@ class DownloadBookTask(TaskWrapper):
 
         if book is not None:
             self.info('Found book definition : ' + self.book_id)
-            bd = VolumeProcessor(self.processors, self.book_folder, 'PNG', self)
+            bd = VolumeProcessor(self.processors, self.book_folder, self.storage_format, self)
             bd.process_book(db_session, book, self.token, self.clean_all)
         else:
             self.critical('Could not find book: ' + self.book_id)

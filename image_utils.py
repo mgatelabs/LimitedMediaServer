@@ -138,7 +138,7 @@ def convert_images_to_format(input_folder: str, image_format: str, logger: TaskW
                     result = True
 
                     if logger.can_trace():
-                        logger.error(f"Converted '{filename}' to '{os.path.basename(output_path)}'")
+                        logger.trace(f"Converted '{filename}' to '{os.path.basename(output_path)}'")
                 # Remove the source file
                 os.remove(filepath)
 

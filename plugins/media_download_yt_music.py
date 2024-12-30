@@ -12,7 +12,7 @@ from feature_flags import MANAGE_MEDIA
 from file_utils import temporary_folder
 from image_utils import crop_and_resize
 from media_queries import find_folder_by_id, insert_file
-from media_utils import get_data_for_mediafile
+from media_utils import get_data_for_mediafile, ingest_file
 from number_utils import parse_boolean
 from plugin_system import ActionMediaFolderPlugin
 from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values
@@ -51,7 +51,7 @@ class DownloadMusicFromYtTask(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_string_arg('URL', 'url', 'The youtube link to a video.  It should have ?v= in the string.')
+            plugin_string_arg('URL', 'url', 'Link to the video, playlist, page')
         )
 
         result.append(
@@ -210,19 +210,14 @@ class DownloadYtMusic(TaskWrapper):
 
                     for item in sample_list:
 
-                        self.debug('SL:' + item)
+                        if self.can_debug():
+                            self.debug('SL:' + item)
 
                         # Get the full path
                         item_full_path = os.path.join(temp_folder, item)
 
                         # Check if it is a file (not a directory)
                         if os.path.isfile(item_full_path):
-                            # Get file size
-                            file_size = os.path.getsize(item_full_path)
-
-                            # Get created time and convert to readable format
-                            created_time = os.path.getctime(item_full_path)
-                            created_datetime = datetime.fromtimestamp(created_time)
 
                             mime_type, _ = mimetypes.guess_type(item_full_path)  # MIME type
 
@@ -241,26 +236,24 @@ class DownloadYtMusic(TaskWrapper):
                                 modified_name = str(item)
 
                                 if self.split_chapters and front_prefix is not None and end_postfix is not None:
-                                    self.debug('BE')
+                                    #self.debug('BE')
                                     video_value = extract_yt_code(modified_name)
-                                    self.debug('A:' + modified_name)
+                                    #self.debug('A:' + modified_name)
                                     modified_name = remove_prefix_and_postfix(modified_name, front_prefix,
                                                                               end_postfix)
-                                    self.debug('B:' + modified_name)
+                                    #self.debug('B:' + modified_name)
                                     # Skip the non-chapter files
                                     if modified_name == '[' + video_value + '].mp3':
-                                        continue
+                                        continue # Skip this file
                                     modified_name = remove_start_digits_pattern(
                                         modified_name + '[' + video_value + '].mp3')
 
                                 replace_album_art_d3(item_full_path, album_file, icon_file, self)
 
-                                new_file = insert_file(source_row.id, modified_name, mime_type, is_archive, False,
-                                                       file_size, created_datetime, db_session)
-
-                                dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
-
-                                shutil.move(str(item_full_path), str(dest_path))
+                                if ingest_file(item_full_path, modified_name, source_row.id, is_archive, self.primary_path,
+                                               self.archive_path, db_session, self):
+                                    if self.can_debug():
+                                        self.debug(f'Ingested: {item}')
 
                             else:
                                 self.warn(f'Ignoring file {item}, unknown MIME TYPE')
