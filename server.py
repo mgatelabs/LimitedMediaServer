@@ -5,6 +5,9 @@ from flask import Flask
 import logging
 import json
 import platform
+from sys import exit
+import os
+
 
 from app_properties import AppPropertyDefinition
 from app_queries import get_secret_key, get_server_port, get_server_host, get_auth_timeout, check_and_insert_property, \
@@ -319,3 +322,6 @@ if __name__ == '__main__':
 
     if not args.skip_run:
         app.run(host=app.config[PROPERTY_SERVER_HOST_KEY], port=app.config[PROPERTY_SERVER_PORT_KEY], debug=False)
+    else:
+        # Windows is having trouble, used to actually exit
+        os._exit(1)
