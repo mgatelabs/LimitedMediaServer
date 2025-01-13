@@ -9,6 +9,7 @@ from typing import Optional
 
 from flask_sqlalchemy.session import Session
 
+from constants import MAX_WORKERS
 from db import MediaFile, MediaFolder
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
@@ -168,6 +169,7 @@ class FileSubtitleEncode(TaskWrapper):
         self.temp_folder = temp_folder
         self.ffmpeg_preset = ffmpeg_preset
         self.ffmpeg_crf = int(ffmpeg_crf)
+        self.weight = 80
 
     def find_subtitle_for_file(self, folder: MediaFolder, file: MediaFile, temp_folder: str, db_session: Session) -> \
     Optional[str]:

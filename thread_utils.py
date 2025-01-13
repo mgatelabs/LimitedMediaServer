@@ -4,7 +4,8 @@ import threading
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import Tuple, Any
+from queue import PriorityQueue
+from typing import Optional
 
 
 def get_caller_info():
@@ -26,19 +27,104 @@ class TaskManager:
     Manages a list of tasks with thread-safe operations.
     """
 
-    def __init__(self):
-        self.task_list = []
+    def __init__(self, max_capacity=100):
+
+        self.task_queue = PriorityQueue()
+        self.task_lookup: dict[int, TaskWrapper] = {}  # Map task IDs to task objects
         self.lock = threading.Lock()
+        self.finished_tasks = {}  # Store finished tasks
+        self.max_capacity = max_capacity  # Total capacity
+        self.current_capacity = 0  # Capacity currently in use
 
-    def add_task(self, task_wrapper):
+    def add_task(self, task: 'TaskWrapper'):
+        with self.lock:
+            self.task_lookup[task.task_id] = task
+            self.task_queue.put(task)
+
+    def adjust_priority(self, task_id, new_priority) -> bool:
+        with self.lock:
+            if task_id in self.task_lookup:
+                task = self.task_lookup.pop(task_id)
+                task.priority = new_priority
+                self.task_lookup[task.task_id] = task
+                self._rebuild_queue()
+                task.info(f"Priority adjusted to {new_priority}")
+                return True
+        return False
+
+    def _rebuild_queue(self):
+        # Clear and rebuild the priority queue with updated priorities
+        items = list(self.task_lookup.values())
+        while not self.task_queue.empty():
+            self.task_queue.get()
+        for item in items:
+            self.task_queue.put(item)
+
+    def get_task_queue(self):
         """
-        Add a task to the task list.
-
-        Args:
-            task_wrapper (TaskWrapper): The task to be added.
+        Retrieve a task from the queue with strict priority group enforcement.
+        Only tasks matching the first task's priority will be considered for execution.
         """
         with self.lock:
-            self.task_list.append(task_wrapper)
+            # Skip it, no capacity
+            if self.current_capacity >= self.max_capacity:
+                return None
+
+            if self.task_queue.empty():
+                return None  # No tasks left
+
+            temp_queue = []  # Temporary storage for tasks that can't run
+            eligible_tasks = []  # Tasks eligible to run (same priority group)
+
+            # Step 1: Identify the priority group
+            first_task = self.task_queue.get()
+            temp_queue.append(first_task)  # Hold the first task temporarily
+
+            target_priority = first_task.priority
+
+            # Step 2: Collect all tasks with the same priority
+            while not self.task_queue.empty():
+                task = self.task_queue.get()
+                if task.priority == target_priority:
+                    eligible_tasks.append(task)
+                else:
+                    temp_queue.append(task)
+
+            # Step 3: Check eligible tasks for capacity
+            for task in [first_task] + eligible_tasks:
+                if task.weight + self.current_capacity <= self.max_capacity:
+                    # Task can run, adjust capacity and return it
+                    self.current_capacity += task.weight
+
+                    # Put back skipped tasks
+                    for skipped_task in temp_queue + eligible_tasks:
+                        if skipped_task.task_id != task.task_id:  # Don't re-add the running task
+                            self.task_queue.put(skipped_task)
+
+                    return task
+
+            # Step 4: No eligible task could run, put everything back
+            for skipped_task in temp_queue + eligible_tasks:
+                self.task_queue.put(skipped_task)
+
+            return None  # No task could fit in the current capacity
+
+    def task_done_queue(self, task: 'TaskWrapper'):
+        with self.lock:
+            if task.task_id in self.task_lookup:
+                self.finished_tasks[task.task_id] = task
+                del self.task_lookup[task.task_id]
+            self.current_capacity -= task.weight
+            self.task_queue.task_done()
+
+    def get_finished_tasks(self):
+        with self.lock:
+            return list(self.finished_tasks.values())
+
+    def clear_finished_tasks(self):
+        with self.lock:
+            self.finished_tasks.clear()
+            print("Finished tasks cleared.")
 
     def has_task(self, task_name: str, task_description: str) -> bool:
         """
@@ -48,12 +134,20 @@ class TaskManager:
         :return: True if the task exists and isn't finished
         """
         with self.lock:
-            for task in self.task_list:
+            for task in self.task_lookup.values():
                 if task.name == task_name and task.description == task_description and not task.is_finished:
                     return True
         return False
 
-    def get_all_tasks(self) -> tuple[type['TaskWrapper'], ...]:
+    def get_task_by_id(self, task_id: int) -> Optional['TaskWrapper']:
+        with self.lock:
+            if task_id in self.task_lookup:
+                return self.task_lookup[task_id]
+            if task_id in self.finished_tasks:
+                return self.finished_tasks[task_id]
+            return None
+
+    def get_all_tasks(self) -> list['TaskWrapper']:
         """
         Get all tasks in the task list.
 
@@ -61,43 +155,38 @@ class TaskManager:
             tuple: A tuple containing all tasks.
         """
         with self.lock:
-            return tuple(self.task_list)
+            # Combine tasks from both finished and pending
+            all_tasks = list(self.finished_tasks.values()) + list(self.task_lookup.values())
 
-    def remove_task_by_id(self, task_id):
-        """
-        Remove a task from the task list by its ID.
+            # Sort by task_id to maintain submission order
+            return sorted(all_tasks, key=lambda task: task.task_id)
 
-        Args:
-            task_id (int): The ID of the task to be removed.
+    def clean_tasks(self, hard_clean: bool = True) -> int:
 
-        Returns:
-            bool: True if the task was removed, False otherwise.
-        """
         with self.lock:
-            for task in self.task_list:
-                if task.task_id == task_id:
-                    self.task_list.remove(task)
-                    return True
-            return False
 
-    def move_task_to_top(self, task_id):
-        """
-        Move a task to the top of the task list by its ID.
+            to_remove = []
 
-        Args:
-            task_id (int): The ID of the task to be moved.
+            for task in self.finished_tasks.values():
+                if hard_clean:
+                    to_remove.append(task.task_id)
+                elif not hard_clean and task.is_warning == False and task.is_failure == False and task.is_finished and not task.is_worked:
+                    to_remove.append(task.task_id)
 
-        Returns:
-            bool: True if the task was moved, False otherwise.
-        """
-        with self.lock:
-            for task in self.task_list:
-                if task.task_id == task_id:
-                    self.task_list.remove(task)
-                    self.task_list.insert(0, task)
-                    return True
-            return False
+            for task_id in to_remove:
+                del self.finished_tasks[task_id]
 
+            return len(to_remove)
+
+LOGGING_LEVEL_NAMES = {
+    0: "TRACE",
+    10: "DEBUG",
+    20: "INFO",
+    30: "WARN",
+    40: "ERROR",
+    50: "CRIT",
+    100: "ALWAY"
+}
 
 class TaskWrapper(ABC):
     """
@@ -114,10 +203,12 @@ class TaskWrapper(ABC):
     task_id_counter = 0
     task_id_lock = threading.Lock()
 
-    def __init__(self, name, description):
+    def __init__(self, name, description, priority: int = 5, weight: int = 1):
         with TaskWrapper.task_id_lock:
             TaskWrapper.task_id_counter += 1
             self.task_id = TaskWrapper.task_id_counter
+        self.priority = priority
+        self.weight = weight
         self.name = name
         self.description = description
         self.progress = 0
@@ -138,6 +229,10 @@ class TaskWrapper(ABC):
         self.post_task = None
         self.ref_book_id = ''
         self.ref_folder_id = ''
+
+    def __lt__(self, other: 'TaskWrapper'):
+        # Compare by priority, then by ID to maintain order
+        return (self.priority, self.task_id) < (other.priority, other.task_id)
 
     def mark_start(self):
         self.start_time = datetime.now(timezone.utc)
@@ -418,14 +513,8 @@ class NoOpTaskWrapper(TaskWrapper):
     def __init__(self):
         super().__init__('No Op', 'No Op')
 
-    def add_log(self, message: str):
-        """
-        Override the add_log method to print the message.
-
-        Args:
-            message (str): The message to be logged.
-        """
-        print(message)
+    def _add_log(self, severity, log_message):
+        print(f'{LOGGING_LEVEL_NAMES[severity]}-{log_message}')
 
     def run(self, db_session):
         """

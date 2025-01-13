@@ -22,7 +22,6 @@ class UserGroup(db.Model):
     description = db.Column(db.String(1024), nullable=True)  # Group description, optional
 
 
-
 # User model
 class User(db.Model):
     __tablename__ = 'users'
@@ -39,6 +38,7 @@ class User(db.Model):
     # Foreign key to UserGroup
     user_group_id = db.Column(db.Integer, ForeignKey('user_groups.id'), nullable=True)  # Optional UserGroup
     user_group = db.relationship('UserGroup', backref='users')
+
 
 class UserHardSession(db.Model):
     __tablename__ = 'user_hard_sessions'
@@ -65,6 +65,7 @@ class UserHardSession(db.Model):
 
     # Relationship back to User
     user = relationship('User', back_populates='hard_sessions')
+
 
 # UserLimit model
 class UserLimit(db.Model):

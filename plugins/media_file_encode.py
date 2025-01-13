@@ -8,6 +8,7 @@ from pathlib import Path
 
 from flask_sqlalchemy.session import Session
 
+from constants import MAX_WORKERS
 from db import MediaFile
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import encode_video, FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
@@ -99,6 +100,7 @@ class FileEncode(TaskWrapper):
         self.temp_folder = temp_folder
         self.ffmpeg_preset = ffmpeg_preset
         self.ffmpeg_crf = int(ffmpeg_crf)
+        self.weight = 80
 
     def run(self, db_session: Session):
 

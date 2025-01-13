@@ -2,14 +2,14 @@ import json
 import mimetypes
 import os
 import random
+import shutil
 import string
+import tempfile
+from contextlib import contextmanager
 from datetime import datetime
 from urllib.parse import urlparse
-import tempfile
-import shutil
 
 from thread_utils import TaskWrapper, NoOpTaskWrapper
-from contextlib import contextmanager
 
 
 def delete_empty_folders(folder_path, logger: TaskWrapper = None):
@@ -108,6 +108,7 @@ def is_valid_url(url):
     parsed = urlparse(url)
     return all([parsed.scheme, parsed.netloc])
 
+
 @contextmanager
 def temporary_folder(base_folder=None, task_wrapper: TaskWrapper = NoOpTaskWrapper()):
     """
@@ -128,3 +129,14 @@ def temporary_folder(base_folder=None, task_wrapper: TaskWrapper = NoOpTaskWrapp
         shutil.rmtree(temp_folder, ignore_errors=True)
         if task_wrapper.can_trace():
             task_wrapper.trace(f'Exit Temp Folder: {temp_folder}')
+
+
+def create_timestamped_folder(base_path):
+    # Get the current timestamp in "YYYY-MM-DD_HH-MM-SS" format
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Create the new folder path
+    new_folder_path = os.path.join(base_path, timestamp)
+    # Create the folder
+    os.makedirs(new_folder_path, exist_ok=True)
+    # Return the new folder path
+    return new_folder_path

@@ -8,6 +8,7 @@ import eyed3
 from PIL import Image
 from flask_sqlalchemy.session import Session
 
+from constants import MAX_WORKERS
 from db import MediaFile
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import get_ffmpeg_f_argument_from_mimetype, generate_video_thumbnail
@@ -318,6 +319,7 @@ class MakeMediaPreview(TaskWrapper):
         self.all_folders = all_folders
         self.force = force
         self.media_position = media_position
+        self.weight = 50
         if folder_id != '*':
             self.ref_folder_id = folder_id
 

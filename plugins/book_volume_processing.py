@@ -95,7 +95,7 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
 
         image_list = processor.list_images(book, chapter, headers)
 
-        if image_list is None:
+        if image_list is None or len(image_list) == 0:
             task_wrapper.set_failure()
             task_wrapper.error('Did not get images from processor')
             return False

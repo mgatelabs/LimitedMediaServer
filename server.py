@@ -1,4 +1,5 @@
 import argparse
+import os.path
 
 from flask import Flask
 import logging
@@ -20,21 +21,28 @@ from constants import PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_SECRET_KEY, PROP
     PROPERTY_SERVER_VOLUME_FOLDER, APP_KEY_SLC, APP_KEY_AUTHENTICATE, APP_KEY_PLUGINS, APP_KEY_PROCESSORS, \
     PROPERTY_SERVER_VOLUME_FORMAT
 from db import init_db, db
+from file_utils import create_timestamped_folder
 from health_routes import health_blueprint
+from inout import perform_backup, validate_database_schema, perform_restore
 from media_routes import media_blueprint
 from network_utils import is_private_ip, get_local_ip
 from plugin_routes import plugin_blueprint
 from plugin_utils import get_plugins
-from process_routes import process_blueprint
+from process_routes import process_blueprint, init_processors
 from serve_routes import serve_blueprint
 from short_lived_cache import ShortLivedCache
 from text_utils import is_not_blank
+from thread_utils import NoOpTaskWrapper
 from volume_routes import volume_blueprint
 from volume_utils import get_processors
 
 # Initialize Flask app
 app = Flask(__name__)
 app.logger.setLevel(logging.ERROR)
+
+# Disable Werkzeug request logging
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)  # Logs only errors, suppresses info logs
 
 @app.after_request
 def add_csp_headers(response):
@@ -99,6 +107,32 @@ if __name__ == '__main__':
         help="Specify a port override (integer). Default is 0."
     )
 
+    parser.add_argument(
+        "--backup-folder",
+        type=str,
+        default=None,
+        help="Specify the backup folder path (optional)"
+    )
+
+    parser.add_argument(
+        '--backup',
+        action='store_true',
+        help="When passed in, the server will cause it to backup the DB and exit."
+    )
+
+    parser.add_argument(
+        '--restore',
+        action='store_true',
+        help="When passed in, the server will attempt to restore a backup and exit."
+    )
+
+    parser.add_argument(
+        "--restore-key",
+        type=str,
+        default=None,
+        help="The name of the backup folder to restore (optional)"
+    )
+
     for plugin in plugins['all']:
         plugin.add_args(parser)
 
@@ -152,13 +186,33 @@ if __name__ == '__main__':
 
     app.config[PROPERTY_DEFINITIONS] = property_definitions
 
-    with app.app_context():
-        for property_definition in property_definitions:
-            check_and_insert_property(property_definition, db.session)
-
     # Common arguments
 
     args = parser.parse_args()
+
+    with app.app_context():
+
+        if args.backup and is_not_blank(args.backup_folder) and os.path.isdir(args.backup_folder):
+            new_backup_path = create_timestamped_folder(args.backup_folder)
+            print(f'Backing up server to folder: {new_backup_path}')
+            perform_backup(new_backup_path, db.session, NoOpTaskWrapper())
+            exit(0)
+        elif args.restore and is_not_blank(args.backup_folder) and os.path.isdir(args.backup_folder) and is_not_blank(args.restore_key) and os.path.isdir(os.path.join(args.backup_folder, args.restore_key)):
+            restore_path = os.path.join(args.backup_folder, args.restore_key)
+            print(f'Restoring the server from folder: {restore_path}')
+            perform_restore(restore_path, NoOpTaskWrapper())
+            exit(0)
+        elif args.backup:
+            print('Argument Error, if attempting a backup you must also pass in --backup-folder "some-location"')
+        elif args.restore:
+            print('Argument Error, if attempting to restore the database you must also pass in --backup-folder "some-location" --restore-key "backup-folder-name"')
+            exit(0)
+        elif not validate_database_schema():
+            print('The Database is not synced, please run the previous software version, export the database, and import it back in.')
+            exit(0)
+
+        for property_definition in property_definitions:
+            check_and_insert_property(property_definition, db.session)
 
     if args.list_plugins:
         print('---------------------------')
@@ -226,6 +280,8 @@ if __name__ == '__main__':
         for property_item in property_definitions:
             if property_item.id.startswith('PLUGIN.'):
                 app.config[property_item.id] = get_plugin_value(property_item.id)
+
+        init_processors(app)
 
     # See if media is ready
     app.config[PROPERTY_SERVER_MEDIA_READY] = is_not_blank(
