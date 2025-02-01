@@ -639,6 +639,151 @@ sudo ldconfig
 cd ../ && rm -Rf build
 ```
 
+#### VPN Installation (Optional)
+
+##### DuckDNS
+
+I had to search around, but DuckDNS.org is a working service to keep track of your IP address.  If you have a static IP address, you can skip to the PiVPN installation.
+
+###### 1. Sign into DuckDNS.org
+
+Visit https://www.duckdns.org and sign in with one of their available services.
+
+###### 2. Create your Domain
+
+Find this spot and enter a uniqwue sounding name for your domain
+
+![image](https://github.com/user-attachments/assets/0a65df5e-c878-4992-88c1-96e84bc64bed)
+
+###### 3. Create the local service
+
+Now visit https://www.duckdns.org/install.jsp and choose "PI" and your DOMAIN.  Generally follow the instructions that are provided.
+
+Just remember, login to your PI with PUTTY.
+
+If it asks you to choose an editor just choose "1"
+
+##### PiVPN
+
+Start off by making sure everything is updated.
+
+```bash
+sudo apt-get update
+sudo apt-get upgrade
+```
+
+Executing this script will start an install process to guide you through setup.
+
+```bash
+curl -L https://install.pivpn.io | bash
+```
+
+###### 1. Welcome Screen
+![image](https://github.com/user-attachments/assets/2ff1f885-2003-452c-b6b3-d92fb0259d8f)
+Press Enter
+###### 2. Static IP Notice
+![image](https://github.com/user-attachments/assets/2a714f2e-744f-4493-901d-c4362a363632)
+This is a warning that you need a local static IP address.  This is typically accomplished via editing your router to assign a static IP address.
+
+Press Enter
+###### 3. IPv6 Notice
+![image](https://github.com/user-attachments/assets/b1fe98cd-1344-4b93-a48c-35fbdadf31ef)
+I'm not concerned, just choose NO, press Enter
+
+###### 4. DHCP Reservation
+![image](https://github.com/user-attachments/assets/570c1d33-9c1a-47f2-8907-8eedbe760e89)
+For me, I already assigned a reserved IP address for the Paspberry PI, so I choose YES, press Enter.
+
+###### 5. Local Users
+![image](https://github.com/user-attachments/assets/e5d9fd07-96c0-4f2f-861d-ba7016fe68bd)
+This is a notice, press Enter
+
+###### 6. Choose A User
+![image](https://github.com/user-attachments/assets/47ee200f-c1b7-46e3-926b-29b22e1e0c91)
+I only have one user, Press Enter
+
+###### 7. Installation mode
+![image](https://github.com/user-attachments/assets/bd2c000b-d962-472f-8657-1ebb18484b82)
+Stick with WireGuard, press Enter
+
+###### 8. Default wireguard Port
+![image](https://github.com/user-attachments/assets/5d0a54ef-1fbe-476a-a3f9-320c4fb30822)
+Leave it as 51820, press Enter
+
+###### 9. Confirm Custom Port Number
+![image](https://github.com/user-attachments/assets/d82dbf77-ee0c-4cc9-8d39-4a51bb6dcb6f)
+Verify yor answer, choose Yes, press Enter
+
+###### 10. DNS Provider
+![image](https://github.com/user-attachments/assets/bb42b98d-cf91-4cd0-8f44-77970dfad696)
+I will leave this up to you...
+
+###### 11. Public IP or DNS
+![image](https://github.com/user-attachments/assets/11ca457a-fa42-4064-8a54-ea849ef08f0e)
+For me, I already setup a DuckDNS account, so I choose DNS entry.  If you have a static IP address from your Internet Provider, you can use the 1st option.
+
+###### 12. PiVPN Setup
+![image](https://github.com/user-attachments/assets/bf3b6dde-11b7-4e23-b7ca-52dcc15b5757)
+For your DuckDNS host it will be HOSTNAME.duckdns.org
+
+###### 13. Confirm DNS Name
+![image](https://github.com/user-attachments/assets/cb6765c2-a520-49ee-853c-a863483f5212)
+If it looks right, select Yes and press Enter
+
+
+###### 14. Server Information
+![image](https://github.com/user-attachments/assets/59b5e254-58a8-4427-9d7a-91fdb2de06a6)
+Press Enter
+
+###### 15. Unattended Upgrades
+![image](https://github.com/user-attachments/assets/a8065af4-9baa-409e-bb47-3acfac2b3b58)
+This is another notice, press Enter
+
+###### 16. Unattended Upgrades
+![image](https://github.com/user-attachments/assets/5dd90d39-c04e-43c6-8d12-65d943c911e9)
+
+For security, you should choose Yes and press Enter
+
+###### 17. Installation Complete
+![image](https://github.com/user-attachments/assets/0a2501f5-edae-493f-89d2-b0ac49dde5ac)
+This is a notice screen, but take account of ```pivpn add``` which you will use later, press Enter
+
+###### 18. Reboot
+![image](https://github.com/user-attachments/assets/32b79b83-6498-4cb7-b625-9a1389d152ae)
+It is a good idea to restart, select Yes, press Enter
+
+###### 19. Rebooting
+![image](https://github.com/user-attachments/assets/67058757-75da-4b1f-8943-623ba0386f74)
+This is a confirmation, Press Enter
+
+###### 20. Wait
+Wait for the server to reboot and login again
+
+###### 20. Add a client config
+![image](https://github.com/user-attachments/assets/a5ff426b-ef85-4b82-828e-df90a0c4546a)
+
+Use the following command to add a configuration
+```bash
+pivpn add
+```
+For the client IP, just leave it blank, press Enter
+You need to provide a name, just give it one, press Enter
+
+
+###### 21. Use your Config
+
+On your device you want to access your netowrk, install WireGuard.  You can search your phone's App Store.
+
+![image](https://github.com/user-attachments/assets/c19fe226-4e59-4b98-8db4-8a6263f9e07f)
+
+On your PI use the following command to display a QR code
+
+```bash
+pivpn -qr
+```
+
+You will need to choose the client config, and a QR will display
+
 #### What else should you considder?
 
 Look at [Advanced Development Configuration](https://github.com/mgatelabs/LimitedMediaServer?tab=readme-ov-file#advanced-development-configuration), to make the app run as a service.  So even after reboot, it's available.
