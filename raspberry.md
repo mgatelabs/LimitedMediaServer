@@ -760,7 +760,7 @@ This is a confirmation, Press Enter
 Wait for the server to reboot and login again
 
 ###### 20. Add a client config
-![image](https://github.com/user-attachments/assets/a5ff426b-ef85-4b82-828e-df90a0c4546a)
+![image](https://github.com/user-attachments/assets/60440da0-60e0-44f9-9cce-24732adcbbfb)
 
 Use the following command to add a configuration
 ```bash
