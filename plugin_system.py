@@ -306,3 +306,37 @@ class ActionMediaFilePlugin(ActionPlugin):
         :return: False
         """
         return False
+
+# Subclass for media files action plugins
+class ActionMediaFilesPlugin(ActionPlugin):
+    """
+    This is a subclass for Context based Plugins. These are accessible for a selected MediaFiles.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.type = 'ACTIONMEDIAFILES'
+        self.primary_path = ''
+        self.archive_path = ''
+        self.temp_path = ''
+
+    def get_action_args(self):
+        return [plugin_string_arg("File ID", "file_id", 'The file to process', 'com')]
+
+    def absorb_config(self, config):
+        """
+        Absorb configuration settings.
+        """
+        self.primary_path = config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
+        self.archive_path = config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER]
+        self.temp_path = config[PROPERTY_SERVER_MEDIA_TEMP_FOLDER]
+
+    def get_category(self):
+        return 'media_files'
+
+    def is_standalone(self):
+        """
+        Actions are not Standalone
+        :return: False
+        """
+        return False

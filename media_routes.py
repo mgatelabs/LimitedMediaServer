@@ -1374,11 +1374,11 @@ def list_history(user_details):
 
     max_rating = get_media_max_rating(user_details)
 
-    rows = find_progress_entries(user_uid, max_rating)
+    rows= find_progress_entries(user_uid, max_rating)
 
     results = []
 
-    for row, folder_name in rows:
+    for row, folder_name, folder_id in rows:
 
         user_progress = row.progress
         if user_progress is None:
@@ -1389,7 +1389,7 @@ def list_history(user_details):
         the_time = convert_datetime_to_yyyymmdd(row.timestamp)
 
         results.append(
-            {"folder_name": folder_name, "file_id": row.file_id, "name": row.file.filename,
+            {"folder_name": folder_name, "folder_id": folder_id, "file_id": row.file_id, "name": row.file.filename,
              "mime_type": row.file.mime_type, "preview": row.file.preview,
              "progress": progress, "timestamp": the_time})
 

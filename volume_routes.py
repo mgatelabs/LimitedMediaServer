@@ -228,7 +228,7 @@ def get_images(user_details: dict) -> tuple:
     prev_chapter_id = prev_chapter_record.chapter_id if prev_chapter_record else ''
     next_chapter_id = next_chapter_record.chapter_id if next_chapter_record else ''
 
-    return generate_success_response('', {"prev": prev_chapter_id, "next": next_chapter_id, "files": files})
+    return generate_success_response('', {"prev": prev_chapter_id, "next": next_chapter_id, "files": files, "style": 'page' if book.style == 'P' else 'scroll'})
 
 
 @volume_blueprint.route('/progress', methods=['POST'])

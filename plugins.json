@@ -1,5 +1,67 @@
 [
     {
+        "id": "action.backup",
+        "icon": "backup",
+        "name": "Backup",
+        "args": [
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "utility",
+        "standalone": true,
+        "prefix_lang_id": ""
+    },
+    {
         "id": "action.convert.format",
         "icon": "style",
         "name": "Convert Format",
@@ -304,6 +366,118 @@
         "category": "book",
         "standalone": false,
         "prefix_lang_id": "bkuc"
+    },
+    {
+        "id": "action.book.download.chapter",
+        "icon": "download",
+        "name": "Download (Chapter)",
+        "args": [
+            {
+                "name": "Book ID",
+                "id": "book_id",
+                "type": "string",
+                "description": "The Book to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Chapter URL",
+                "id": "chapter_url",
+                "type": "url",
+                "description": "The URL to download",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Chapter Name",
+                "id": "chapter_name",
+                "type": "longstring",
+                "description": "Name of the chapter, like Chapter-1, 0001, or 0001.5",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Cleaning",
+                "id": "cleaning",
+                "type": "select",
+                "default": "n",
+                "description": "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
+                "values": [
+                    {
+                        "name": "New Chapters",
+                        "id": "n"
+                    },
+                    {
+                        "name": "All Chapters",
+                        "id": "a"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Headers",
+                "id": "headers",
+                "type": "longstring",
+                "description": "Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "book",
+        "standalone": false,
+        "prefix_lang_id": "bkucc"
     },
     {
         "id": "action.book.update.cache",
@@ -1035,6 +1209,124 @@
         "prefix_lang_id": "medimport"
     },
     {
+        "id": "action.download.file",
+        "icon": "download",
+        "name": "Save File from Web",
+        "args": [
+            {
+                "name": "Folder",
+                "id": "folder_id",
+                "type": "mfd",
+                "description": "Referenced folder",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "URL",
+                "id": "url",
+                "type": "url",
+                "description": "The link to the file to grab.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Filename",
+                "id": "filename",
+                "type": "filename",
+                "description": "The name of the file.",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Location",
+                "id": "dest",
+                "type": "select",
+                "default": "primary",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Primary Disk",
+                        "id": "primary"
+                    },
+                    {
+                        "name": "Archive Disk",
+                        "id": "archive"
+                    }
+                ],
+                "prefix_lang_id": "media"
+            },
+            {
+                "name": "Method",
+                "id": "meth",
+                "type": "select",
+                "default": "system",
+                "description": "Which download subsystem to use?",
+                "values": [
+                    {
+                        "name": "Default Downloader",
+                        "id": "system"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_folder",
+        "standalone": false,
+        "prefix_lang_id": "dlfile"
+    },
+    {
         "id": "action.download.m3u8",
         "icon": "download",
         "name": "Save Video from M3u8",
@@ -1155,7 +1447,7 @@
                 "name": "URL",
                 "id": "url",
                 "type": "string",
-                "description": "The youtube link to a video.  It should have ?v= in the string.",
+                "description": "Link to the video, playlist, page.",
                 "values": [],
                 "prefix_lang_id": ""
             },
@@ -1250,7 +1542,7 @@
                 "name": "URL",
                 "id": "url",
                 "type": "string",
-                "description": "The youtube link to a video.  It should have ?v= in the string.",
+                "description": "Link to the video, playlist, page",
                 "values": [],
                 "prefix_lang_id": ""
             },
@@ -1548,6 +1840,62 @@
                 "prefix_lang_id": "com"
             },
             {
+                "name": "Audio Bit Rate",
+                "id": "ffmpeg_abr",
+                "type": "select",
+                "default": "128",
+                "description": "Key parameter for controlling the audio quality and file size of videos",
+                "values": [
+                    {
+                        "name": "64",
+                        "id": "64"
+                    },
+                    {
+                        "name": "80",
+                        "id": "80"
+                    },
+                    {
+                        "name": "96",
+                        "id": "96"
+                    },
+                    {
+                        "name": "112",
+                        "id": "112"
+                    },
+                    {
+                        "name": "128",
+                        "id": "128"
+                    },
+                    {
+                        "name": "160",
+                        "id": "160"
+                    },
+                    {
+                        "name": "192",
+                        "id": "192"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Mix-down",
+                "id": "ffmpeg_mix",
+                "type": "select",
+                "default": "f",
+                "description": "Key parameter for controlling the audio channels and file size of videos",
+                "values": [
+                    {
+                        "name": "Stereo",
+                        "id": "t"
+                    },
+                    {
+                        "name": "Mono",
+                        "id": "f"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
                 "name": "Logging Level",
                 "id": "_logging_level",
                 "type": "select",
@@ -1605,6 +1953,76 @@
         "prefix_lang_id": "medenc"
     },
     {
+        "id": "action.file.info",
+        "icon": "title",
+        "name": "Media Info",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_file",
+        "standalone": false,
+        "prefix_lang_id": "medinfo"
+    },
+    {
         "id": "action.file.subtitle",
         "icon": "title",
         "name": "Burn Subtitles",
@@ -1616,6 +2034,14 @@
                 "description": "The file to process",
                 "values": [],
                 "prefix_lang_id": "com"
+            },
+            {
+                "name": "Offset",
+                "id": "offset",
+                "type": "string",
+                "description": "Subtitle Offset in seconds",
+                "values": [],
+                "prefix_lang_id": ""
             },
             {
                 "name": "Preset",
@@ -1706,6 +2132,62 @@
                 "prefix_lang_id": "com"
             },
             {
+                "name": "Audio Bit Rate",
+                "id": "ffmpeg_abr",
+                "type": "select",
+                "default": "128",
+                "description": "Key parameter for controlling the audio quality and file size of videos",
+                "values": [
+                    {
+                        "name": "64",
+                        "id": "64"
+                    },
+                    {
+                        "name": "80",
+                        "id": "80"
+                    },
+                    {
+                        "name": "96",
+                        "id": "96"
+                    },
+                    {
+                        "name": "112",
+                        "id": "112"
+                    },
+                    {
+                        "name": "128",
+                        "id": "128"
+                    },
+                    {
+                        "name": "160",
+                        "id": "160"
+                    },
+                    {
+                        "name": "192",
+                        "id": "192"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Mix-down",
+                "id": "ffmpeg_mix",
+                "type": "select",
+                "default": "f",
+                "description": "Key parameter for controlling the audio channels and file size of videos",
+                "values": [
+                    {
+                        "name": "Stereo",
+                        "id": "t"
+                    },
+                    {
+                        "name": "Mono",
+                        "id": "f"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
                 "name": "Logging Level",
                 "id": "_logging_level",
                 "type": "select",
@@ -1761,6 +2243,162 @@
         "category": "media_file",
         "standalone": false,
         "prefix_lang_id": "medsub"
+    },
+    {
+        "id": "action.file.vrt2str",
+        "icon": "title",
+        "name": "VTT to SRT",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Offset",
+                "id": "offset",
+                "type": "string",
+                "description": "Subtitle Offset in seconds",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_file",
+        "standalone": false,
+        "prefix_lang_id": "vtt2srt"
+    },
+    {
+        "id": "action.files.vrt2str",
+        "icon": "title",
+        "name": "VTT to SRT",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Offset",
+                "id": "offset",
+                "type": "string",
+                "description": "Subtitle Offset in seconds",
+                "values": [],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_files",
+        "standalone": false,
+        "prefix_lang_id": "vtt2srt"
     },
     {
         "id": "action.folder.subtitle",
@@ -1859,6 +2497,62 @@
                     {
                         "name": "25 (Lower Quality)",
                         "id": "25"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Audio Bit Rate",
+                "id": "ffmpeg_abr",
+                "type": "select",
+                "default": "128",
+                "description": "Key parameter for controlling the audio quality and file size of videos",
+                "values": [
+                    {
+                        "name": "64",
+                        "id": "64"
+                    },
+                    {
+                        "name": "80",
+                        "id": "80"
+                    },
+                    {
+                        "name": "96",
+                        "id": "96"
+                    },
+                    {
+                        "name": "112",
+                        "id": "112"
+                    },
+                    {
+                        "name": "128",
+                        "id": "128"
+                    },
+                    {
+                        "name": "160",
+                        "id": "160"
+                    },
+                    {
+                        "name": "192",
+                        "id": "192"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Mix-down",
+                "id": "ffmpeg_mix",
+                "type": "select",
+                "default": "f",
+                "description": "Key parameter for controlling the audio channels and file size of videos",
+                "values": [
+                    {
+                        "name": "Stereo",
+                        "id": "t"
+                    },
+                    {
+                        "name": "Mono",
+                        "id": "f"
                     }
                 ],
                 "prefix_lang_id": "com"
@@ -2277,6 +2971,246 @@
         "category": "media",
         "standalone": true,
         "prefix_lang_id": "makeprev"
+    },
+    {
+        "id": "action.generate.previews.file",
+        "icon": "image",
+        "name": "Generate Previews",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Place",
+                "id": "place",
+                "type": "select",
+                "default": "45",
+                "description": "Position to take frame from",
+                "values": [
+                    {
+                        "name": "10%",
+                        "id": "10"
+                    },
+                    {
+                        "name": "20%",
+                        "id": "20"
+                    },
+                    {
+                        "name": "30%",
+                        "id": "30"
+                    },
+                    {
+                        "name": "40%",
+                        "id": "40"
+                    },
+                    {
+                        "name": "45%",
+                        "id": "45"
+                    },
+                    {
+                        "name": "50%",
+                        "id": "50"
+                    },
+                    {
+                        "name": "60%",
+                        "id": "60"
+                    },
+                    {
+                        "name": "70%",
+                        "id": "70"
+                    },
+                    {
+                        "name": "80%",
+                        "id": "80"
+                    },
+                    {
+                        "name": "90%",
+                        "id": "90"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_file",
+        "standalone": false,
+        "prefix_lang_id": "makeprev"
+    },
+    {
+        "id": "action.generate.previews.files",
+        "icon": "image",
+        "name": "Generate Previews",
+        "args": [
+            {
+                "name": "File ID",
+                "id": "file_id",
+                "type": "string",
+                "description": "The file to process",
+                "values": [],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Place",
+                "id": "place",
+                "type": "select",
+                "default": "45",
+                "description": "Position to take frame from",
+                "values": [
+                    {
+                        "name": "10%",
+                        "id": "10"
+                    },
+                    {
+                        "name": "20%",
+                        "id": "20"
+                    },
+                    {
+                        "name": "30%",
+                        "id": "30"
+                    },
+                    {
+                        "name": "40%",
+                        "id": "40"
+                    },
+                    {
+                        "name": "45%",
+                        "id": "45"
+                    },
+                    {
+                        "name": "50%",
+                        "id": "50"
+                    },
+                    {
+                        "name": "60%",
+                        "id": "60"
+                    },
+                    {
+                        "name": "70%",
+                        "id": "70"
+                    },
+                    {
+                        "name": "80%",
+                        "id": "80"
+                    },
+                    {
+                        "name": "90%",
+                        "id": "90"
+                    }
+                ],
+                "prefix_lang_id": ""
+            },
+            {
+                "name": "Logging Level",
+                "id": "_logging_level",
+                "type": "select",
+                "default": "20",
+                "description": "",
+                "values": [
+                    {
+                        "name": "Trace",
+                        "id": "0"
+                    },
+                    {
+                        "name": "Debug",
+                        "id": "10"
+                    },
+                    {
+                        "name": "Info",
+                        "id": "20"
+                    },
+                    {
+                        "name": "Warning",
+                        "id": "30"
+                    },
+                    {
+                        "name": "Error",
+                        "id": "40"
+                    },
+                    {
+                        "name": "Critical",
+                        "id": "50"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            },
+            {
+                "name": "Prevent Duplicate Tasks",
+                "id": "_duplicate_checking",
+                "type": "select",
+                "default": "y",
+                "description": "",
+                "values": [
+                    {
+                        "name": "No",
+                        "id": "n"
+                    },
+                    {
+                        "name": "Yes",
+                        "id": "y"
+                    }
+                ],
+                "prefix_lang_id": "com"
+            }
+        ],
+        "category": "media_files",
+        "standalone": false,
+        "prefix_lang_id": "makeprevs"
     },
     {
         "id": "action.generate.previews.folder",

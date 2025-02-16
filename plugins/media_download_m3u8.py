@@ -8,6 +8,7 @@ from flask_sqlalchemy.session import Session
 
 from feature_flags import MANAGE_MEDIA
 from file_utils import is_valid_url, temporary_folder
+from html_utils import get_base_url, get_headers
 from media_queries import find_folder_by_id, insert_file
 from media_utils import get_data_for_mediafile
 from plugin_system import ActionMediaFolderPlugin
@@ -16,7 +17,7 @@ from text_utils import is_blank
 from thread_utils import TaskWrapper
 
 
-class DownloadFromM3u8Task(ActionMediaFolderPlugin):
+class DownloadM3u8Plugin(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
@@ -89,12 +90,12 @@ class DownloadFromM3u8Task(ActionMediaFolderPlugin):
 
     def create_task(self, db_session: Session, args):
         filename = args['filename']
-        return DownloadM3u8("Download M3u8", f'Downloading {filename} from M3u8 to folder ' + args['folder_id'], args['folder_id'], filename, args['url'],
-                            args['dest'], self.primary_path,
-                            self.archive_path, self.temp_path)
+        return DownloadM3u8Job("Download M3u8", f'Downloading {filename} from M3u8 to folder ' + args['folder_id'], args['folder_id'], filename, args['url'],
+                               args['dest'], self.primary_path,
+                               self.archive_path, self.temp_path)
 
 
-class DownloadM3u8(TaskWrapper):
+class DownloadM3u8Job(TaskWrapper):
     def __init__(self, name, description, folder_id, filename, url, dest, primary_path, archive_path, temp_path):
         super().__init__(name, description)
         self.folder_id = folder_id
@@ -125,6 +126,12 @@ class DownloadM3u8(TaskWrapper):
 
             arguments = ['-nostdin', '-i', self.url, '-c', 'copy', temp_file]
 
+            headers = get_headers(self.url, False, self, False, get_base_url(self.url), True)
+
+            if headers:
+                for key, value in headers.items():
+                    arguments.extend(['-headers', f'{key}: {value}'])
+
             # Run the program with the provided arguments
             process = subprocess.Popen(['ffmpeg'] + arguments, cwd=temp_folder, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -142,6 +149,8 @@ class DownloadM3u8(TaskWrapper):
                     file_size = os.path.getsize(temp_file)
 
                     if file_size > 0:
+
+                        self.info(f'Found file with size {file_size}')
 
                         # Get created time and convert to readable format
                         created_time = os.path.getctime(temp_file)

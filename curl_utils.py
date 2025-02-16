@@ -9,7 +9,7 @@ from thread_utils import TaskWrapper, NoOpTaskWrapper
 This includes utility methods which will call a special version of CURL, that emulates Chrome
 """
 
-def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrapper = NoOpTaskWrapper()):
+def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrapper = NoOpTaskWrapper(), insecure: bool = False):
     """
     This is to call the custom CHROM based CURL as a GET command
     :param url:
@@ -29,6 +29,9 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
 
     if download_file:
         command.extend(['-o', download_file])
+
+    if insecure:
+        command.extend(['-k'])
 
     if task_wrapper.can_trace():
         task_wrapper.trace("' '".join(command))

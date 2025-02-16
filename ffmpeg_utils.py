@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import json
 
 from plugin_methods import plugin_select_arg, plugin_select_values
 from thread_utils import TaskWrapper, NoOpTaskWrapper
@@ -18,6 +19,21 @@ FFMPEG_CRF = plugin_select_arg('Constant Rate Factor', 'ffmpeg_crf', '23',
                                                     '23', '24', '24', '25 (Lower Quality)', '25'),
                                'Key parameter for controlling the quality and file size of videos', 'com')
 FFMPEG_CRF_VALUES = ['18', '19', '20', '21', '22', '23', '24', '25']
+
+FFMPEG_AUDIO_BIT = plugin_select_arg('Audio Bit Rate', 'ffmpeg_abr', '128',
+                               plugin_select_values('64', '64', '80', '80', '96', '96', '112', '112',
+                                                    '128', '128', '160',
+                                                    '160', '192', '192'),
+                               'Key parameter for controlling the audio quality and file size of videos', 'com')
+
+FFMPEG_AUDIO_BIT_RATE_VALUES = ['64', '80', '96', '112', '128', '160', '192']
+
+
+FFMPEG_STEREO = plugin_select_arg('Mix-down', 'ffmpeg_mix', 'f',
+                               plugin_select_values('Stereo', 't', 'Mono', 'f'),
+                               'Key parameter for controlling the audio channels and file size of videos', 'com')
+
+FFMPEG_STEREO_VALUES = ['f', 't']
 
 
 def get_ffmpeg_f_argument_from_mimetype(mime: str) -> str:
@@ -39,7 +55,7 @@ def get_ffmpeg_f_argument_from_mimetype(mime: str) -> str:
 
 
 def encode_video(input_file, output_file, input_format=None, ffmpeg_preset: str = 'medium', constant_rate_factor=23,
-                 log: TaskWrapper = NoOpTaskWrapper()) -> bool:
+                 stereo=True, audio_bitrate=128, log: TaskWrapper = NoOpTaskWrapper()) -> bool:
     try:
         # Construct the FFMPEG command
         command = ["ffmpeg"]
@@ -47,6 +63,10 @@ def encode_video(input_file, output_file, input_format=None, ffmpeg_preset: str 
         # Add the input format if specified
         if input_format:
             command.extend(["-f", input_format])
+
+        channels = 1
+        if stereo:
+            channels = 2
 
         command.extend([
             "-i", input_file,
@@ -59,8 +79,8 @@ def encode_video(input_file, output_file, input_format=None, ffmpeg_preset: str 
             "-crf", str(constant_rate_factor),
             "-movflags", "+faststart",
             "-c:a", "aac",
-            "-b:a", "128k",
-            "-ac", "2",
+            "-b:a", f"{audio_bitrate}k",
+            "-ac", str(channels),
             output_file
         ])
 
@@ -87,8 +107,9 @@ def encode_video(input_file, output_file, input_format=None, ffmpeg_preset: str 
         return False
 
 
-def burn_subtitles_to_video(input_file, srt_file, output_file, input_format='mp4', ffmpeg_preset: str = 'medium',
-                            constant_rate_factor: int = 23, log: TaskWrapper = NoOpTaskWrapper()):
+def burn_subtitles_to_video(input_file, srt_file, output_file, offset:int = 0, input_format='mp4',
+                            ffmpeg_preset: str = 'medium', constant_rate_factor: int = 23, stereo=True,
+                            audio_bitrate=128, log: TaskWrapper = NoOpTaskWrapper()):
     try:
 
         # Construct the FFMPEG command
@@ -97,6 +118,10 @@ def burn_subtitles_to_video(input_file, srt_file, output_file, input_format='mp4
         # Add the input format if specified
         if input_format:
             command.extend(["-f", input_format])
+
+        channels = 1
+        if stereo:
+            channels = 2
 
         command.extend([
             "-i", input_file,
@@ -109,8 +134,8 @@ def burn_subtitles_to_video(input_file, srt_file, output_file, input_format='mp4
             "-crf", str(constant_rate_factor),
             "-movflags", "+faststart",
             "-c:a", "aac",
-            "-b:a", "128k",
-            "-ac", "2",
+            "-b:a", f"{audio_bitrate}k",
+            "-ac", str(channels),
             output_file
         ])
 
@@ -156,3 +181,61 @@ def generate_video_thumbnail(input_file, input_format: str, output_file, percent
     time = duration * percentage / 100
     # Extract the frame at the calculated time and save as PNG
     subprocess.run(['ffmpeg', '-ss', str(time), "-f", input_format, '-i', input_file, '-frames:v', '1', output_file, '-y'], check=True)
+
+
+def get_media_info(file_path: str, logger: TaskWrapper):
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-print_format", "json",
+        "-show_streams",
+        "-show_format",
+        file_path
+    ]
+
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    if result.returncode != 0:
+        logger.set_failure()
+        logger.error(f"Error: {result.stderr}")
+        return None
+
+    try:
+        metadata = json.loads(result.stdout)
+
+        info = {
+            "format": metadata.get("format", {}).get("format_name", "Unknown"),
+            "duration": metadata.get("format", {}).get("duration", "Unknown"),
+            "bit_rate": metadata.get("format", {}).get("bit_rate", "Unknown"),
+            "streams": []
+        }
+
+        for stream in metadata.get("streams", []):
+            stream_info = {
+                "codec": stream.get("codec_name", "Unknown"),
+                "type": stream.get("codec_type", "Unknown"),
+                "bit_rate": stream.get("bit_rate", "Unknown")
+            }
+
+            if stream_info["type"] == "video":
+                stream_info.update({
+                    "width": stream.get("width", "Unknown"),
+                    "height": stream.get("height", "Unknown"),
+                    "fps": eval(stream.get("avg_frame_rate", "0/1")) if stream.get("avg_frame_rate") else "Unknown"
+                })
+
+            if stream_info["type"] == "audio":
+                stream_info.update({
+                    "channels": stream.get("channels", "Unknown"),
+                    "sample_rate": stream.get("sample_rate", "Unknown")
+                })
+
+            info["streams"].append(stream_info)
+
+        logger.info(json.dumps(info))
+
+        return info
+
+    except json.JSONDecodeError:
+        print("Error decoding JSON output")
+        return None

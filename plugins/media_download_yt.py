@@ -14,7 +14,7 @@ from text_utils import is_blank
 from thread_utils import TaskWrapper
 
 
-class DownloadFromYtTask(ActionMediaFolderPlugin):
+class DownloadYtPlugin(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
@@ -77,12 +77,12 @@ class DownloadFromYtTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return DownloadYt("Download YT", 'Downloading from YT ' + args['url'], args['folder_id'], args['url'],
-                          args['dest'], self.primary_path,
-                          self.archive_path, self.temp_path)
+        return DownloadYtJob("Download YT", 'Downloading from YT ' + args['url'], args['folder_id'], args['url'],
+                             args['dest'], self.primary_path,
+                             self.archive_path, self.temp_path)
 
 
-class DownloadYt(TaskWrapper):
+class DownloadYtJob(TaskWrapper):
     def __init__(self, name, description, folder_id, video, dest, primary_path, archive_path, temp_path):
         super().__init__(name, description)
         self.folder_id = folder_id

@@ -14,7 +14,7 @@ from thread_utils import TaskWrapper
 PROPERTY_PLUGIN_BACKUP_PATH = 'PLUGIN.BACKUP.PATH'
 
 
-class TestTask(ActionPlugin):
+class BackupPlugin(ActionPlugin):
     """
     This is a utility task which will try to awake a local networked PC
     """
@@ -52,7 +52,7 @@ class TestTask(ActionPlugin):
             self.backup_path = config[PROPERTY_PLUGIN_BACKUP_PATH]
 
     def create_task(self, db_session: Session, args):
-        return BackupTask("Backup", 'Backup Request', self.backup_path)
+        return BackupJob("Backup", 'Backup Request', self.backup_path)
 
     def get_feature_flags(self):
         return MANAGE_APP
@@ -73,7 +73,7 @@ class TestTask(ActionPlugin):
         return self.backup_path is not None
 
 
-class BackupTask(TaskWrapper):
+class BackupJob(TaskWrapper):
     def __init__(self, name, description, backup_folder: str):
         super().__init__(name, description)
         self.backup_folder = backup_folder

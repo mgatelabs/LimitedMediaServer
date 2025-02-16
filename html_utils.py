@@ -237,6 +237,8 @@ def get_authority_url(url):
     base_url = f"{parsed_url.netloc}"
     return base_url
 
+def replace_url_ending(url, new_part):
+    return "/".join(url.rsplit("/", 1)[:-1]) + "/" + new_part
 
 def get_headers_when_empty(headers, url, task_wrapper: TaskWrapper, alt_url: str = None):
     if headers is not None:
@@ -249,7 +251,7 @@ def get_headers_when_empty(headers, url, task_wrapper: TaskWrapper, alt_url: str
     return get_headers(url, True, task_wrapper, False, alt_url)
 
 
-def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool = False, alt_url: str = None) -> \
+def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool = False, alt_url: str = None, ignore_errors: bool = False) -> \
         Optional[dict[str, str]]:
     """
     Get the headers from the headers.json file and return them as a dictionary.
@@ -278,10 +280,10 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
     modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
 
     # Calculate the time 2 hours ago
-    two_hours_ago = datetime.now() - timedelta(hours=2)
+    time_limit = datetime.now() - timedelta(hours=3)
 
     # Check if the file was modified within the last 2 hours
-    if modified_time >= two_hours_ago:
+    if modified_time >= time_limit:
         with open(file_path, 'r') as file:
             try:
                 headers = json.load(file)
@@ -305,10 +307,12 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
                 return headers
             except json.JSONDecodeError:
                 task_wrapper.error(f"Failed to load JSON from headers.json.")
-                task_wrapper.set_failure(True)
+                if not ignore_errors:
+                    task_wrapper.set_failure(True)
                 return None
     else:
         task_wrapper.critical(f"File headers.json was not modified within the last 2 hours.")
-        task_wrapper.set_failure(True)
+        if not ignore_errors:
+            task_wrapper.set_failure(True)
         return None
 

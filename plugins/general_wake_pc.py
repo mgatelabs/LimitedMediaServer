@@ -12,7 +12,7 @@ from thread_utils import TaskWrapper
 
 PROPERTY_PLUGIN_MAC_ADDRESS = 'PLUGIN.WAKE.MAC.ADDRESS'
 
-class WakeUpPcTask(ActionPlugin):
+class WakeUpPcPlugin(ActionPlugin):
     """
     This is a utility task which will try to awake a local networked PC
     """
@@ -52,7 +52,7 @@ class WakeUpPcTask(ActionPlugin):
 
 
     def create_task(self, db_session: Session, args):
-        return WakePc("WakePC", f'Wake up PC w/ MAC address {self.mac}', self.mac)
+        return WakePcJob("WakePC", f'Wake up PC w/ MAC address {self.mac}', self.mac)
 
     def get_feature_flags(self):
         return MANAGE_APP
@@ -73,7 +73,7 @@ class WakeUpPcTask(ActionPlugin):
         return self.mac is not None
 
 
-class WakePc(TaskWrapper):
+class WakePcJob(TaskWrapper):
     def __init__(self, name, description, mac):
         super().__init__(name, description)
         self.mac = mac

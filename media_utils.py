@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 import mimetypes
 import shutil
+from datetime import timedelta
 
 from flask_sqlalchemy.session import Session
 from webvtt import WebVTT
@@ -181,15 +182,36 @@ def get_filename_with_extension(video_filename, file_ending: str):
     return f"{base_name}.{file_ending}"
 
 
-def convert_vtt_to_srt(vtt_file, srt_file):
+def convert_vtt_to_srt(vtt_file, srt_file, offset_seconds=0):
     try:
-        """Convert a VTT file to SRT format."""
+        """Convert a VTT file to SRT format with an optional time offset."""
         vtt = WebVTT.read(vtt_file)
+
+        def adjust_timestamp(timestamp, offset):
+            """Adjust a timestamp by the given offset in seconds."""
+            parts = timestamp.split(':')  # Split into components
+            if len(parts) == 2:  # Format MM:SS.sss
+                h, m, s = 0, int(parts[0]), float(parts[1].replace(',', '.'))
+            elif len(parts) == 3:  # Format HH:MM:SS.sss
+                h, m, s = int(parts[0]), int(parts[1]), float(parts[2].replace(',', '.'))
+            else:
+                raise ValueError(f"Unexpected timestamp format: {timestamp}")
+
+            original_time = timedelta(hours=h, minutes=m, seconds=s)
+            new_time = original_time + timedelta(seconds=offset)
+            new_time = max(new_time, timedelta(0))  # Prevent negative timestamps
+
+            return str(new_time)[:-3].replace(',', '.')  # Ensure SRT format
+
         with open(srt_file, 'w', encoding='utf-8') as f:
             for i, caption in enumerate(vtt):
+                start_time = adjust_timestamp(caption.start, offset_seconds)
+                end_time = adjust_timestamp(caption.end, offset_seconds)
+
                 f.write(f"{i + 1}\n")
-                f.write(f"{caption.start} --> {caption.end}\n")
+                f.write(f"{start_time} --> {end_time}\n")
                 f.write(f"{caption.text}\n\n")
+
         return True
     except Exception as e:
         logging.exception(e)

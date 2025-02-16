@@ -8,11 +8,11 @@ from pathlib import Path
 
 from flask_sqlalchemy.session import Session
 
-from constants import MAX_WORKERS
 from db import MediaFile
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import encode_video, FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
-    get_ffmpeg_f_argument_from_mimetype
+    get_ffmpeg_f_argument_from_mimetype, FFMPEG_AUDIO_BIT, FFMPEG_STEREO, FFMPEG_AUDIO_BIT_RATE_VALUES, \
+    FFMPEG_STEREO_VALUES
 from file_utils import temporary_folder
 from media_queries import insert_file, find_files_in_folder
 from media_utils import get_data_for_mediafile, get_file_by_user, \
@@ -22,7 +22,7 @@ from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 
 
-class FileEncodeTask(ActionMediaFilePlugin):
+class EncodeForFilePlugin(ActionMediaFilePlugin):
     """
     Re-encode a file using FFMPEG
     """
@@ -54,6 +54,8 @@ class FileEncodeTask(ActionMediaFilePlugin):
 
         result.append(FFMPEG_PRESET)
         result.append(FFMPEG_CRF)
+        result.append(FFMPEG_AUDIO_BIT)
+        result.append(FFMPEG_STEREO)
 
         return result
 
@@ -76,6 +78,22 @@ class FileEncodeTask(ActionMediaFilePlugin):
 
             if args['ffmpeg_crf'] not in FFMPEG_CRF_VALUES:
                 results.append('unknown ffmpeg_crf value')
+        # Audio Bit Rate
+        if 'ffmpeg_abr' not in args or is_blank(args['ffmpeg_abr']):
+            results.append('ffmpeg_abr is required')
+        else:
+            args['ffmpeg_abr'] = clean_string(args['ffmpeg_abr'])
+
+            if args['ffmpeg_abr'] not in FFMPEG_AUDIO_BIT_RATE_VALUES:
+                results.append('unknown ffmpeg_abr value')
+        # Mix Down
+        if 'ffmpeg_mix' not in args or is_blank(args['ffmpeg_mix']):
+            results.append('ffmpeg_mix is required')
+        else:
+            args['ffmpeg_mix'] = clean_string(args['ffmpeg_mix'])
+
+            if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
+                results.append('unknown ffmpeg_mix value')
 
         if len(results) > 0:
             return results
@@ -85,13 +103,16 @@ class FileEncodeTask(ActionMediaFilePlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return FileEncode("EncodeFile", 'Encoding: ' + args['file_id'], args['file_id'], args['ffmpeg_preset'], args['ffmpeg_crf'],
-                          self.primary_path, self.archive_path, self.temp_path)
+        return EncodeJob("EncodeFile", 'Encoding: ' + args['file_id'], args['file_id'], args['ffmpeg_preset'],
+                         args['ffmpeg_crf'],
+                         self.primary_path, self.archive_path, self.temp_path, int(args['ffmpeg_abr']),
+                         args['ffmpeg_mix'] == 't')
 
 
-class FileEncode(TaskWrapper):
-    def __init__(self, name, description, file_id, ffmpeg_preset: str, ffmpeg_crf: str, primary_folder: str, archive_folder: str,
-                 temp_folder: str):
+class EncodeJob(TaskWrapper):
+    def __init__(self, name, description, file_id, ffmpeg_preset: str, ffmpeg_crf: str, primary_folder: str,
+                 archive_folder: str,
+                 temp_folder: str, audio_bit_rate: int = 128, stereo: bool = True):
         super().__init__(name, description)
         self.file_id = file_id
         self.folder_id = None
@@ -101,6 +122,8 @@ class FileEncode(TaskWrapper):
         self.ffmpeg_preset = ffmpeg_preset
         self.ffmpeg_crf = int(ffmpeg_crf)
         self.weight = 80
+        self.audio_bit_rate = audio_bit_rate
+        self.stereo = stereo
 
     def run(self, db_session: Session):
 
@@ -180,7 +203,8 @@ class FileEncode(TaskWrapper):
 
                     self.info(f'Working on {file.filename}')
 
-                    if encode_video(source_file, dest_file, desired_format, self.ffmpeg_preset, self.ffmpeg_crf, log=self):
+                    if encode_video(source_file, dest_file, desired_format, self.ffmpeg_preset, self.ffmpeg_crf,
+                                    self.stereo, self.audio_bit_rate, log=self):
 
                         src_path = Path(temp_folder) / 'temp.mp4'
 
@@ -192,7 +216,8 @@ class FileEncode(TaskWrapper):
                         is_archive = False
 
                         # Try to insert the object
-                        new_file = insert_file(folder_row.id, file_name, mime_type, is_archive, False, file_size, created_time,
+                        new_file = insert_file(folder_row.id, file_name, mime_type, is_archive, False, file_size,
+                                               created_time,
                                                db_session)
 
                         if is_blank(new_file.id):

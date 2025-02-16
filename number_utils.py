@@ -80,6 +80,17 @@ def is_integer(input_string: str) -> bool:
     """
     return input_string.isdigit()
 
+def is_integer_with_sign(input_string: str) -> bool:
+    """
+    Check if the input string contains only integer characters.
+
+    Args:
+    input_string (str): The input string to check.
+
+    Returns:
+    bool: True if the string contains only integer characters, False otherwise.
+    """
+    return input_string.lstrip('-').isdigit() and input_string != "-"
 
 def is_boolean(input_string: str) -> bool:
     """

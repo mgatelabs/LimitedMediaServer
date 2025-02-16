@@ -15,7 +15,7 @@ from utility import random_sleep
 
 
 def _process_download(processor, token, book: Book, task_wrapper, book_folder: str, storage_format: str,
-                      clean_all: bool = False):
+                      clean_all: bool = False, chapter_url: str = None, chapter_name: str = None):
     headers = None
 
     headers_required = processor.headers_required(book)
@@ -42,9 +42,12 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
     if task_wrapper.can_trace():
         task_wrapper.trace(f'Book {book_id}')
 
-    chapters = processor.list_chapters(book, headers)
-
-    task_wrapper.info(f'Chapters Found: {len(chapters)}')
+    if chapter_url is not None and chapter_name is not  None:
+        chapters = [{'chapter': chapter_name, 'href': chapter_url}]
+        task_wrapper.info(f'Forced Chapter: {chapter_name}')
+    else:
+        chapters = processor.list_chapters(book, headers)
+        task_wrapper.info(f'Chapters Found: {len(chapters)}')
 
     book_index = 0
     chapter_index = 0
@@ -225,6 +228,26 @@ class VolumeProcessor:
             # generate_json_for_folder(book_id, item_path, lib, self.task_wrapper)
             generate_db_for_folder(session, book_id, item_path, self.task_wrapper)
         return book_result
+
+    def process_book_chapter(self, session: Session, book: Book, token, chapter_url, chapter_name, clean_all=False):
+
+        if token is not None and token.should_stop:
+            self.task_wrapper.critical('Token is triggered, stopping')
+            return False
+
+        book_name: str = book.name
+        book_type: str = book.processor
+
+        self.task_wrapper.info('Processing: ' + book_name)
+
+        processor = self.processor_for_id(book_type)
+
+        if processor is not None:
+            self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
+            _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper,
+                                            self.book_folder, self.storage_format, clean_all, chapter_url, chapter_name)
+        else:
+            self.task_wrapper.critical('Unknown Processor: ' + book_type)
 
     def get_tags(self, book: Book, token) -> Optional[bool]:
 

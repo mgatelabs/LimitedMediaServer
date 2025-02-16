@@ -18,7 +18,7 @@ import mimetypes
 from pathlib import Path
 
 
-class ConsumeFolderTask(ActionMediaFolderPlugin):
+class ConsumeForFolderPlugin(ActionMediaFolderPlugin):
     """
     Import files from a folder into the media server.
     """
@@ -85,11 +85,11 @@ class ConsumeFolderTask(ActionMediaFolderPlugin):
 
     def create_task(self, db_session: Session, args):
         folder = args['folder']
-        return ConsumeFolder("Import Folder", f'Import content from: {folder}', args['folder_id'], args['folder'], args['dest'],
-                             self.primary_path, self.archive_path)
+        return ConsumeJob("Import Folder", f'Import content from: {folder}', args['folder_id'], args['folder'], args['dest'],
+                          self.primary_path, self.archive_path)
 
 
-class ConsumeFolder(TaskWrapper):
+class ConsumeJob(TaskWrapper):
     def __init__(self, name: str, description: str, folder_id: str, folder_path: str, dest: str, primary_path: str, archive_path: str):
         super().__init__(name, description)
         self.folder_id = folder_id

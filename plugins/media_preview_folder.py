@@ -17,13 +17,13 @@ from media_queries import find_missing_file_previews_in_folder, find_missing_fil
     find_files_in_folder
 from media_utils import get_data_for_mediafile, get_preview_for_mediafile, get_folder_by_user, get_file_by_user
 from number_utils import parse_boolean, is_integer
-from plugin_system import ActionMediaFolderPlugin, ActionMediaPlugin, ActionMediaFilePlugin
+from plugin_system import ActionMediaFolderPlugin, ActionMediaPlugin, ActionMediaFilePlugin, ActionMediaFilesPlugin
 from plugin_methods import plugin_select_arg, plugin_select_values
 from text_utils import is_blank
 from thread_utils import TaskWrapper
 
 
-class MakePreviewsTask(ActionMediaFolderPlugin):
+class MakePreviewsForFolderPlugin(ActionMediaFolderPlugin):
     """
     Task to update the previews for a specific folder.
     """
@@ -121,11 +121,11 @@ class MakePreviewsTask(ActionMediaFolderPlugin):
         Create the task to generate previews for a folder.
         """
         folder_id = args['folder_id']
-        return MakeMediaPreview("Gen-Prev", f'Generate previews for Folder: {folder_id}', folder_id, None, self.primary_path,
-                                self.archive_path, False, parse_boolean(args['force']), args['place'])
+        return MakeMediaPreviewJob("Gen-Prev", f'Generate previews for Folder: {folder_id}', folder_id, None, self.primary_path,
+                                   self.archive_path, False, parse_boolean(args['force']), args['place'])
 
 
-class MakeAllPreviewsTask(ActionMediaPlugin):
+class MakePreviewsForAllPlugin(ActionMediaPlugin):
     """
     Task to update previews system-wide.
     """
@@ -211,10 +211,10 @@ class MakeAllPreviewsTask(ActionMediaPlugin):
         """
         Create the task to generate previews for all folders.
         """
-        return MakeMediaPreview("Gen-Prev", 'All Folders', '*', None, self.primary_path, self.archive_path, True, False,
-                                args['place'])
+        return MakeMediaPreviewJob("Gen-Prev", 'All Folders', '*', None, self.primary_path, self.archive_path, True, False,
+                                   args['place'])
 
-class MakePreviewTask(ActionMediaFilePlugin):
+class MakePreviewForFilePlugin(ActionMediaFilePlugin):
     """
     Task to update the previews for a specific file.
     """
@@ -301,19 +301,110 @@ class MakePreviewTask(ActionMediaFilePlugin):
         Create the task to generate previews for a folder.
         """
         file_id = args['file_id']
-        return MakeMediaPreview("Gen-Prev", f'Generate preview for File: {file_id}', '', file_id, self.primary_path,
-                                self.archive_path, False, True, args['place'])
+        return MakeMediaPreviewJob("Gen-Prev", f'Generate preview for File: {file_id}', '', file_id, self.primary_path,
+                                   self.archive_path, False, True, args['place'])
 
-class MakeMediaPreview(TaskWrapper):
+class MakePreviewsForFilesPlugin(ActionMediaFilesPlugin):
+    """
+    Task to update the previews for a specific file.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.prefix_lang_id = 'makeprevs'
+
+    def get_sort(self):
+        """
+        Define the sort order for this task.
+        """
+        return {'id': 'media_preview_folder', 'sequence': 1}
+
+    def add_args(self, parser: argparse):
+        """
+        Add command-line arguments for this task.
+        """
+        pass
+
+    def use_args(self, args):
+        """
+        Use the provided command-line arguments.
+        """
+        pass
+
+    def get_action_name(self):
+        """
+        Get the name of the action.
+        """
+        return 'Generate Previews'
+
+    def get_action_id(self):
+        """
+        Get the unique ID of the action.
+        """
+        return 'action.generate.previews.files'
+
+    def get_action_icon(self):
+        """
+        Get the icon for the action.
+        """
+        return 'image'
+
+    def get_action_args(self):
+        """
+        Get the arguments for the action.
+        """
+        result = super().get_action_args()
+
+        result.append(
+            plugin_select_arg('Place', 'place', '45',
+                              plugin_select_values('10%', '10', '20%', '20', '30%', '30', '40%', '40', '45%', '45',
+                                                   '50%', '50',
+                                                   '60%', '60', '70%', '70', '80%', '80', '90%', '90'),
+                              'Position to take frame from'))
+
+        return result
+
+    def process_action_args(self, args):
+        """
+        Process the action arguments.
+        """
+        results = []
+
+        if 'place' in args and is_integer(args['place']):
+            args['place'] = int(args['place'])
+        else:
+            results.append('place argument is required')
+
+        if len(results) > 0:
+            return results
+
+        return None
+
+    def get_feature_flags(self):
+        """
+        Get the feature flags required for this task.
+        """
+        return MANAGE_MEDIA
+
+    def create_task(self, db_session: Session, args):
+        """
+        Create the task to generate previews for a folder.
+        """
+        file_id = args['file_id']
+        return MakeMediaPreviewJob("Gen-Prev", f'Generate preview for Files: {file_id}', '', file_id, self.primary_path,
+                                   self.archive_path, False, True, args['place'], True)
+
+class MakeMediaPreviewJob(TaskWrapper):
     """
     Task to generate previews for files in a folder.
     """
 
     def __init__(self, name, description, folder_id, file_id, primary_path, archived_path, all_folders=False,
-                 force=False, media_position=45):
+                 force=False, media_position=45, multiple_file: bool = False):
         super().__init__(name, description)
         self.folder_id = folder_id
         self.file_id = file_id
+        self.multiple_file = multiple_file
         self.primary_path = primary_path
         self.archived_path = archived_path
         self.all_folders = all_folders
@@ -339,7 +430,13 @@ class MakeMediaPreview(TaskWrapper):
             try:
                 # If this is for a file, lets verify access
                 if self.file_id is not None:
-                    get_file_by_user(self.file_id, self.user, db_session)
+
+                    if self.multiple_file:
+                        file_list = self.file_id.split(",")
+                        for file in file_list:
+                            get_file_by_user(file, self.user, db_session)
+                    else:
+                        get_file_by_user(self.file_id, self.user, db_session)
                 else:
                     # Make sure we have access
                     self.trace('Checking for User access to Folder')
@@ -350,12 +447,22 @@ class MakeMediaPreview(TaskWrapper):
                 self.set_failure()
                 return
 
+            self.trace('Start Finding Files')
+
             if self.file_id is not None:
-                files = [get_file_by_user(self.file_id, self.user, db_session)]
-            if self.force:
+                if self.multiple_file:
+                    files = []
+                    file_list = self.file_id.split(",")
+                    for file in file_list:
+                        files.append(get_file_by_user(file, self.user, db_session)[0])
+                else:
+                    files = [get_file_by_user(self.file_id, self.user, db_session)[0]]
+            elif self.force:
                 files = find_files_in_folder(self.folder_id, db_session=db_session)
             else:
                 files = find_missing_file_previews_in_folder(self.folder_id, db_session)
+
+            self.trace('End Finding Files')
 
         total = len(files)
         count = 1
@@ -367,9 +474,9 @@ class MakeMediaPreview(TaskWrapper):
 
             self.update_progress((count / total) * 100.0)
             count = count + 1
-
+            self.trace('Finding Source')
             source_path = get_data_for_mediafile(file, self.primary_path, self.archived_path)
-
+            self.trace('Finding Preview')
             preview_path = get_preview_for_mediafile(file, self.primary_path)
 
             if not self.all_folders:
@@ -381,6 +488,7 @@ class MakeMediaPreview(TaskWrapper):
                     self.trace(f'{source_path} > {preview_path}')
 
             try:
+                self.trace('Before Gen')
                 if generate_thumbnail(file.mime_type, str(source_path), str(preview_path), self,
                                       self.media_position):
                     file.preview = True
@@ -389,6 +497,7 @@ class MakeMediaPreview(TaskWrapper):
                         db_session.commit()
                 else:
                     self.warn(f'Could not generate thumbnail for {file.filename}')
+                self.trace('After Gen')
             except Exception as e:
                 logging.exception(e)
                 self.set_failure()

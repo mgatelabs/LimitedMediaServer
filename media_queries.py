@@ -522,7 +522,7 @@ def find_progress_entry(user_id: int, file_id: str) -> Optional[MediaFileProgres
 
 
 def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Session = db.session) -> Optional[
-    List[Tuple[MediaFileProgress, str]]]:
+    List[Tuple[MediaFileProgress, str, str]]]:
     """
     Try to find entries for a media file with the associated folder name.
     :param user_id: ID of the user.
@@ -532,7 +532,7 @@ def find_progress_entries(user_id: int, max_rating: int = 200, db_session: Sessi
     """
 
     query = (
-        db_session.query(MediaFileProgress, MediaFolder.name)
+        db_session.query(MediaFileProgress, MediaFolder.name, MediaFolder.id)
         .join(MediaFile, MediaFileProgress.file_id == MediaFile.id)
         .join(MediaFolder, MediaFile.folder_id == MediaFolder.id)
         .filter(

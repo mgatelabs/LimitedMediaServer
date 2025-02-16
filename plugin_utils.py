@@ -2,7 +2,7 @@ import importlib
 import pkgutil
 
 from plugin_system import ActionSeriesPlugin, ActionBookSpecificPlugin, ActionPlugin, ActionMediaFolderPlugin, \
-    ActionMediaFilePlugin, ActionMediaPlugin, ActionBookGeneralPlugin
+    ActionMediaFilePlugin, ActionMediaPlugin, ActionBookGeneralPlugin, ActionMediaFilesPlugin
 
 
 # Define a sorting key function for plugins
@@ -26,7 +26,7 @@ def get_plugins(plugin_dir):
                 if (
                     isinstance(obj, type) and
                     issubclass(obj, ActionPlugin) and
-                    obj not in {ActionSeriesPlugin, ActionBookGeneralPlugin, ActionBookSpecificPlugin, ActionMediaFolderPlugin, ActionMediaFilePlugin, ActionMediaPlugin, ActionPlugin}
+                    obj not in {ActionSeriesPlugin, ActionBookGeneralPlugin, ActionBookSpecificPlugin, ActionMediaFolderPlugin, ActionMediaFilePlugin, ActionMediaFilesPlugin, ActionMediaPlugin, ActionPlugin}
                 ):
                     plugin_instance = obj()
                     all_plugins.append(plugin_instance)

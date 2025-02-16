@@ -93,7 +93,7 @@ def calculate_folder_size2(folder_path: str) -> tuple:
     return number_of_bytes, number_preview_bytes, top_10_subfolders
 
 
-class CheckDiskStatus(ActionPlugin):
+class CheckDiskStatusPlugin(ActionPlugin):
     """
     This is a way to check how much disk space is left on this server.
     """
@@ -145,7 +145,7 @@ class CheckDiskStatus(ActionPlugin):
         return 'utility'
 
     def create_task(self, db_session: Session, args):
-        return CreateDiskCheck("Disk", 'Check Disk Space', self.primary_path, self.archive_path, self.book_folder)
+        return DiskCheckJob("Disk", 'Check Disk Space', self.primary_path, self.archive_path, self.book_folder)
 
 
 def get_disk_usage():
@@ -185,7 +185,7 @@ def format_bytes(size):
     return f"{size:.2f} {units[n]}"
 
 
-class CreateDiskCheck(TaskWrapper):
+class DiskCheckJob(TaskWrapper):
     def __init__(self, name, description, primary_path: str, archive_path: str, book_folder: str):
         super().__init__(name, description)
         self.primary_path = primary_path

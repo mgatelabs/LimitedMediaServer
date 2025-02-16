@@ -13,17 +13,20 @@ from constants import MAX_WORKERS
 from db import MediaFile, MediaFolder
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
-    get_ffmpeg_f_argument_from_mimetype, burn_subtitles_to_video
+    get_ffmpeg_f_argument_from_mimetype, burn_subtitles_to_video, FFMPEG_AUDIO_BIT, FFMPEG_AUDIO_BIT_RATE_VALUES, \
+    FFMPEG_STEREO, FFMPEG_STEREO_VALUES
 from file_utils import temporary_folder
 from media_queries import insert_file, find_file_by_filename, find_files_in_folder
 from media_utils import get_data_for_mediafile, \
     get_filename_with_extension, convert_vtt_to_srt, get_folder_by_user, get_file_by_user, describe_file_size_change
+from number_utils import is_integer_with_sign
+from plugin_methods import plugin_string_arg
 from plugin_system import ActionMediaFilePlugin, ActionMediaFolderPlugin
 from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 
 
-class FileSubtitleTask(ActionMediaFilePlugin):
+class SubtitleForFilePlugin(ActionMediaFilePlugin):
     """
     Subtitle a file using FFMPEG
     """
@@ -53,8 +56,11 @@ class FileSubtitleTask(ActionMediaFilePlugin):
     def get_action_args(self):
         result = super().get_action_args()
 
+        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
         result.append(FFMPEG_PRESET)
         result.append(FFMPEG_CRF)
+        result.append(FFMPEG_AUDIO_BIT)
+        result.append(FFMPEG_STEREO)
 
         return result
 
@@ -70,12 +76,36 @@ class FileSubtitleTask(ActionMediaFilePlugin):
                 results.append('unknown ffmpeg_preset value')
 
         if 'ffmpeg_crf' not in args or is_blank(args['ffmpeg_crf']):
-            results.append('ffmpeg_preset is required')
+            results.append('ffmpeg_crf is required')
         else:
             args['ffmpeg_crf'] = clean_string(args['ffmpeg_crf'])
 
             if args['ffmpeg_crf'] not in FFMPEG_CRF_VALUES:
                 results.append('unknown ffmpeg_crf value')
+        # Audio Bit Rate
+        if 'ffmpeg_abr' not in args or is_blank(args['ffmpeg_abr']):
+            results.append('ffmpeg_abr is required')
+        else:
+            args['ffmpeg_abr'] = clean_string(args['ffmpeg_abr'])
+
+            if args['ffmpeg_abr'] not in FFMPEG_AUDIO_BIT_RATE_VALUES:
+                results.append('unknown ffmpeg_abr value')
+        # Mix Down
+        if 'ffmpeg_mix' not in args or is_blank(args['ffmpeg_mix']):
+            results.append('ffmpeg_mix is required')
+        else:
+            args['ffmpeg_mix'] = clean_string(args['ffmpeg_mix'])
+
+            if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
+                results.append('unknown ffmpeg_mix value')
+
+        if 'offset' not in args or is_blank(args['offset']):
+            args['offset'] = 0
+        else:
+            args['offset'] = clean_string(args['offset'])
+
+            if not is_integer_with_sign(args['offset']):
+                results.append('offset is not a valid integer')
 
         if len(results) > 0:
             return results
@@ -85,12 +115,12 @@ class FileSubtitleTask(ActionMediaFilePlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return FileSubtitleEncode("SubtitleFile", 'Encoding: ' + args['file_id'], args['file_id'], None,
-                                  args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
-                                  self.temp_path)
+        return SubtitleEncodeJob("SubtitleFile", 'Encoding: ' + args['file_id'], args['file_id'], None,
+                                 args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
+                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't', int(args['offset']))
 
 
-class FolderSubtitleTask(ActionMediaFolderPlugin):
+class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
     """
     Subtitle a folder using FFMPEG
     """
@@ -122,6 +152,8 @@ class FolderSubtitleTask(ActionMediaFolderPlugin):
 
         result.append(FFMPEG_PRESET)
         result.append(FFMPEG_CRF)
+        result.append(FFMPEG_AUDIO_BIT)
+        result.append(FFMPEG_STEREO)
 
         return result
 
@@ -143,6 +175,22 @@ class FolderSubtitleTask(ActionMediaFolderPlugin):
 
             if args['ffmpeg_crf'] not in FFMPEG_CRF_VALUES:
                 results.append('unknown ffmpeg_crf value')
+        # Audio Bit Rate
+        if 'ffmpeg_abr' not in args or is_blank(args['ffmpeg_abr']):
+            results.append('ffmpeg_abr is required')
+        else:
+            args['ffmpeg_abr'] = clean_string(args['ffmpeg_abr'])
+
+            if args['ffmpeg_abr'] not in FFMPEG_AUDIO_BIT_RATE_VALUES:
+                results.append('unknown ffmpeg_abr value')
+        # Mix Down
+        if 'ffmpeg_mix' not in args or is_blank(args['ffmpeg_mix']):
+            results.append('ffmpeg_mix is required')
+        else:
+            args['ffmpeg_mix'] = clean_string(args['ffmpeg_mix'])
+
+            if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
+                results.append('unknown ffmpeg_mix value')
 
         if len(results) > 0:
             return results
@@ -152,15 +200,14 @@ class FolderSubtitleTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return FileSubtitleEncode("SubtitleFolder", 'Encoding: ' + args['folder_id'], None, args['folder_id'],
-                                  args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
-                                  self.temp_path)
+        return SubtitleEncodeJob("SubtitleFolder", 'Encoding: ' + args['folder_id'], None, args['folder_id'],
+                                 args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
+                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't')
 
 
-class FileSubtitleEncode(TaskWrapper):
+class SubtitleEncodeJob(TaskWrapper):
     def __init__(self, name, description, file_id: Optional[str], folder_id: Optional[str], ffmpeg_preset: str,
-                 ffmpeg_crf: str, primary_folder: str, archive_folder: str,
-                 temp_folder: str):
+                 ffmpeg_crf: str, primary_folder: str, archive_folder: str, temp_folder: str, audio_bit_rate:int=128, stereo: bool = True, offset:int = 0):
         super().__init__(name, description)
         self.file_id = file_id
         self.folder_id = folder_id
@@ -170,6 +217,9 @@ class FileSubtitleEncode(TaskWrapper):
         self.ffmpeg_preset = ffmpeg_preset
         self.ffmpeg_crf = int(ffmpeg_crf)
         self.weight = 80
+        self.audio_bit_rate = audio_bit_rate
+        self.stereo = stereo
+        self.offset = offset
 
     def find_subtitle_for_file(self, folder: MediaFolder, file: MediaFile, temp_folder: str, db_session: Session) -> \
     Optional[str]:
@@ -184,7 +234,7 @@ class FileSubtitleEncode(TaskWrapper):
         elif vtt_row is not None:
             vtt_file = get_data_for_mediafile(vtt_row, self.primary_folder, self.archive_folder)
             srt_file = os.path.join(temp_folder, 'temp.srt')
-            if not convert_vtt_to_srt(vtt_file, srt_file):
+            if not convert_vtt_to_srt(vtt_file, srt_file, self.offset):
                 self.set_failure()
                 self.error('Could not convert VTT file to SRT')
                 return None
@@ -281,8 +331,8 @@ class FileSubtitleEncode(TaskWrapper):
 
                     self.info('Found Subtitle File, Working...')
 
-                    if burn_subtitles_to_video(source_file, srt_file, dest_file, desired_format, self.ffmpeg_preset,
-                                               self.ffmpeg_crf, self):
+                    if burn_subtitles_to_video(source_file, srt_file, dest_file, self.offset, desired_format, self.ffmpeg_preset,
+                                               self.ffmpeg_crf, self.stereo, self.audio_bit_rate, log=self):
 
                         src_path = Path(temp_folder) / 'temp.mp4'
 
