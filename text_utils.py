@@ -368,7 +368,7 @@ def extract_webp_strings(input_text):
 def extract_jpeg_strings(input_text):
     import re
 
-    # Find all matches of `.webp"` in the string
+    # Find all matches of `.jpeg"` in the string
     matches = [match.start() for match in re.finditer(r'\.jpeg"', input_text)]
     result = []
 
@@ -376,7 +376,7 @@ def extract_jpeg_strings(input_text):
         # Look backwards from the `.webp"` match to find the preceding `"`
         start_idx = input_text.rfind('"', 0, match)
         if start_idx != -1:  # Ensure a starting `"` was found
-            # Extract the substring between the `"` and `.webp"`
+            # Extract the substring between the `"` and `.jpeg"`
             extracted_string = input_text[start_idx + 1:match + 5]
             result.append(extracted_string)
 

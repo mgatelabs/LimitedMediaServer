@@ -136,7 +136,7 @@ class Vtt2SrtForFilesPlugin(ActionMediaFilesPlugin):
 
     def create_task(self, db_session: Session, args):
         return Vtt2SrtJob("Vtt2Srt", 'Fixing: ' + args['file_id'], args['file_id'], self.primary_path, self.archive_path,
-                           self.temp_path, int(args['offset'], True))
+                           self.temp_path, int(args['offset']), True)
 
 
 

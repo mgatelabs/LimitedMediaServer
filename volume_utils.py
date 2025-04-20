@@ -4,6 +4,7 @@ import os
 import re
 import pkgutil
 
+from processors.GenericBasicProcessor import GenericBasicProcessor
 from processors.processor_core import CustomDownloadInterface
 
 
@@ -41,6 +42,7 @@ def get_processors(plugin_dir):
                 if (
                     isinstance(obj, type) and
                     issubclass(obj, CustomDownloadInterface) and
+                    obj not in {GenericBasicProcessor} and
                     obj != CustomDownloadInterface
                 ):
                     # Instantiate and append to the list

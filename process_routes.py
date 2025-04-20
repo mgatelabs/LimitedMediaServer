@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
 
 from flask import Blueprint, request, current_app
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 
 from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username, get_uid
 from common_utils import generate_failure_response, generate_success_response
@@ -18,64 +18,110 @@ from messages import msg_invalid_parameter, msg_tasks_started, msg_action_cancel
     msg_found_x_results, msg_access_denied_content_rating
 from number_utils import is_integer
 from text_utils import is_blank
-from thread_utils import TaskManager, get_exception
+from thread_utils import TaskManager, get_exception, TaskWrapper, TaskWorker
 
 process_blueprint = Blueprint('process', __name__)
 
 # Initialize TaskManager
-global task_manager
+global task_manager, worker_queue_number
 task_manager = TaskManager()
 
-# Initialize ThreadPoolExecutor with a maximum of 5 worker threads
+# Initialize ThreadPoolExecutor with a maximum # of worker threads
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 
 
+def close_queue_session(my_task_manager: TaskManager, task_wrapper: TaskWrapper, session: Session,
+                        worker_status: TaskWorker):
+    try:
+        worker_status.position = 9
+        my_task_manager.task_done_queue(task_wrapper, worker_status)
+        worker_status.position = 10
+        task_wrapper.mark_end()
+        worker_status.position = 11
+        if session is not None:
+            worker_status.position = 12
+            session.close()
+    except Exception as inst:
+        worker_status.position = 13
+        logging.error(inst)
+        worker_status.position = 14
+        task_wrapper.add_log(str(inst))
+        worker_status.position = 15
+    worker_status.position = 20
+
+
 # Worker function to consume tasks
-def queue_worker(task_manager: TaskManager, app):
+def queue_worker(my_task_manager: TaskManager, app, index: int):
+    worker_status = my_task_manager.add_worker(index)
+
     while True:
-        task_wrapper = task_manager.get_task_queue()
+        worker_status.wait_stamp = 0
+        worker_status.position = 1
+        task_wrapper = my_task_manager.get_task_queue()
         if task_wrapper is None:
+            worker_status.position = 2
             time.sleep(3)
             continue  # Sentinel to exit
-
+        worker_status.job = task_wrapper.task_id
         session = None
         try:
+            worker_status.position = 3
             task_wrapper.trace('Before Context')
             with app.app_context():
-
-                Session = sessionmaker(bind=db.engine)
-                session = Session()
+                task_wrapper.trace('In Context')
+                worker_status.position = 4
+                SessionMak = sessionmaker(bind=db.engine)
+                session = SessionMak()
 
                 # Create a new session for the thread
                 task_wrapper.trace('Before Local Session')
                 task_wrapper.mark_start()
-                task_wrapper.always('Executing')
+                task_wrapper.always('Executing Task')
                 username = get_username(task_wrapper.user)
                 uid = get_uid(task_wrapper.user)
                 task_wrapper.info(f'Executed by {username} ({uid})')
                 task_wrapper.set_waiting(False)
                 task_wrapper.run(session)
                 task_wrapper.set_finished(True)
-                task_wrapper.always('Finished')
+                task_wrapper.always('Finished Task')
         except Exception as inst:
+            worker_status.position = 5
             logging.error(inst)
             task_wrapper.add_log(str(inst))
             ex_json = get_exception()
-
+            worker_status.position = 6
             task_wrapper.set_finished(True)
             task_wrapper.set_failure(True)
             task_wrapper.error(
                 'Exception: ' + ex_json['message'] + ' - ' + ex_json['file'] + '[' + ex_json['line'] + ']')
         finally:
-            task_wrapper.mark_end()
-            task_manager.task_done_queue(task_wrapper)
-            if session is not None:
-                session.close()
+            worker_status.position = 70
+            close_queue_session(my_task_manager, task_wrapper, session, worker_status)
+            worker_status.position = 72
+            worker_status.wait_stamp = time.time()
+    worker_status.online = False
 
 
 def init_processors(app):
-    global task_manager
-    workers = [executor.submit(queue_worker, task_manager, app) for _ in range(MAX_WORKERS)]
+    global task_manager, worker_queue_number
+    worker_queue_number = 1
+    for i in range(MAX_WORKERS):
+        init_processor(app)
+
+
+def init_processor(app):
+    global task_manager, worker_queue_number
+    executor.submit(queue_worker, task_manager, app, worker_queue_number)
+    worker_queue_number = worker_queue_number + 1
+
+
+@process_blueprint.route('/add/worker', methods=['POST'])
+@feature_required(process_blueprint, MANAGE_PROCESSES)
+def add_worker(user_details):
+    app = current_app._get_current_object()  # gets the actual app, not the proxy
+    with app.app_context():
+        init_processor(app)
+    return generate_success_response('', messages=[msg_operation_complete()])
 
 
 @process_blueprint.route('/add/plugin', methods=['POST'])
@@ -182,6 +228,14 @@ def clean_tasks(user_details):
     return generate_success_response('', messages=[msg_removed_x_items(count)])
 
 
+@process_blueprint.route('/new_worker', methods=['POST'])
+@feature_required(process_blueprint, MANAGE_PROCESSES)
+def new_worker(user_details):
+    app = current_app._get_current_object()  # gets the actual app, not the proxy
+    executor.submit(queue_worker, task_manager, app, generate_worker_id())
+    return generate_success_response('', messages=[msg_removed_x_items(count)])
+
+
 @process_blueprint.route('/sweep', methods=['POST'])
 @feature_required(process_blueprint, MANAGE_PROCESSES)
 def sweep_tasks(user_details):
@@ -222,6 +276,14 @@ def restart_service(user_details):
 def get_all_task_status(user_detail):
     global task_manager
 
+    removed = task_manager.remove_dead_tasks()
+
+    if removed > 0:
+        app = current_app._get_current_object()  # gets the actual app, not the proxy
+        with app.app_context():
+            for i in range(removed):
+                init_processor(app)
+
     tasks = task_manager.get_all_tasks()
 
     result = []
@@ -252,7 +314,9 @@ def get_all_task_status(user_detail):
             "weight": task.weight
         })
 
-    return generate_success_response('', {'tasks': result}, messages=[msg_found_x_results(len(tasks))])
+    return generate_success_response('', {'tasks': result, 'weight': task_manager.get_weight(),
+                                          'workers': task_manager.get_worker_status()},
+                                     messages=[msg_found_x_results(len(tasks))])
 
 
 # REST endpoint to get task status

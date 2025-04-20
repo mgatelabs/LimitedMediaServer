@@ -197,9 +197,11 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
                         if clean_previews and os.path.isfile(dest_image_file):
                             os.remove(dest_image_file)
 
-                        if not os.path.isfile(dest_image_file):
+                        imgpath = os.path.join(chapter_path, image_file_list[0])
+
+                        if not os.path.isfile(dest_image_file) or  os.path.getmtime(dest_image_file) < os.path.getmtime(imgpath):
                             task_wrapper.set_worked()
-                            imgpath = os.path.join(chapter_path, image_file_list[0])
+
                             if task_wrapper.can_trace():
                                 task_wrapper.trace(f'New Image {imgpath}')
                             try:
@@ -208,6 +210,7 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
                                     task_wrapper.trace(f'Image Created')
                             except Exception as e:
                                 task_wrapper.error("Error making thumbnail file")
+
 
     if json_data['chapters'][0]['name'].startswith("chapter-"):
 

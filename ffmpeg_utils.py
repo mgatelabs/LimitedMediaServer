@@ -69,7 +69,7 @@ def encode_video(input_file, output_file, input_format=None, ffmpeg_preset: str 
             channels = 2
 
         command.extend([
-            "-i", input_file,
+            "-y", "-i", input_file,
             "-vf", "scale='min(3840,iw)':-2",
             "-c:v", "libx264",
             "-preset", ffmpeg_preset,
@@ -124,7 +124,7 @@ def burn_subtitles_to_video(input_file, srt_file, output_file, offset:int = 0, i
             channels = 2
 
         command.extend([
-            "-i", input_file,
+            "-y", "-i", input_file,
             "-vf", f"scale='min(3840,iw)':-2,subtitles={srt_file}",
             "-c:v", "libx264",
             "-preset", ffmpeg_preset,

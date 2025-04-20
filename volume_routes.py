@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, send_from_directory, current_app, request, make_response, abort
@@ -13,13 +14,15 @@ from db import db, Book
 from feature_flags import BOOKMARKS, VIEW_BOOKS, MANAGE_VOLUME
 from image_utils import split_and_save_image, merge_two_images
 from messages import msg_action_cancelled_wrong, msg_missing_parameter, msg_invalid_parameter, \
-    msg_access_denied_content_rating, msg_operation_complete, msg_action_failed, msg_server_error, msg_book_added
+    msg_access_denied_content_rating, msg_operation_complete, msg_action_failed, msg_server_error, msg_book_added, \
+    msg_book_removed
 from number_utils import is_integer, parse_boolean, is_boolean
 from text_utils import is_blank, clean_string, is_valid_book_id, is_not_blank
+from thread_utils import NoOpTaskWrapper
 from volume_queries import list_books_for_rating, find_chapters_by_book, find_book_by_id, find_chapter_by_id, \
     find_chapter_by_sequence, upsert_book, upsert_recent, \
     find_bookmarks, add_volume_bookmark, remove_volume_bookmark, \
-    count_books_for_rating, find_recent_entries
+    count_books_for_rating, find_recent_entries, manage_remove_book
 from volume_utils import get_volume_max_rating
 
 volume_blueprint = Blueprint('volume', __name__)
@@ -176,9 +179,13 @@ def get_chapters(user_details: dict) -> tuple:
 
         chapter_results.append(entry)
 
+    info_url = ''
+    if book.info_url is not None:
+        info_url = book.info_url
+
     style = 'scroll' if book.style == 'S' else 'page'
 
-    return generate_success_response('', {'chapters': chapter_results, 'style': style})
+    return generate_success_response('', {'chapters': chapter_results, 'style': style, 'info_url': info_url})
 
 
 @volume_blueprint.route('/list/images', methods=['POST'])
@@ -710,6 +717,7 @@ def get_book_details(user_details: dict) -> tuple:
 BOOK_FIELDS = ['id', 'name', 'processor', 'active', 'info_url', 'rss_url', 'extra_url', 'start_chapter', 'skip',
                'rating', 'tags', 'style']
 BOOK_REQUIRED_FIELDS = ['id', 'name', 'processor', 'active', 'info_url', 'rating', 'style']
+BOOK_DELETE_FIELDS = ['id']
 
 
 def acquire_book_fields(book_data):
@@ -790,7 +798,7 @@ def update_book(user_details: dict) -> tuple:
         if field not in book_data or is_blank(book_data[field]):
             return generate_failure_response(f'{field} parameter is required', messages=[msg_missing_parameter(field)])
 
-    book_id = clean_string(book_data['id'])
+    book_id = book_data['id']
 
     existing_book = find_book_by_id(book_id)
 
@@ -811,3 +819,38 @@ def update_book(user_details: dict) -> tuple:
         return generate_failure_response(f'Error updating book: {str(e)}', messages=[msg_action_failed()])
 
     return generate_success_response('Book updated successfully', messages=[msg_operation_complete()])
+
+@volume_blueprint.route('/remove', methods=['POST'])
+@feature_required(volume_blueprint, MANAGE_VOLUME)
+def remove_book(user_details: dict) -> tuple:
+    """
+    Update an existing book in the library.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+
+    Returns:
+    tuple: JSON response with the status of the operation and HTTP status code.
+    """
+    book_data = {}
+    for field in BOOK_FIELDS:
+        book_data[field] = clean_string(request.form.get(field))
+
+    for field in BOOK_DELETE_FIELDS:
+        if field not in book_data or is_blank(book_data[field]):
+            return generate_failure_response(f'{field} parameter is required', messages=[msg_missing_parameter(field)])
+
+    book_id = clean_string(book_data['id'])
+    existing_book = find_book_by_id(book_id)
+
+    if existing_book is None:
+        return generate_failure_response(f'Book with ID {book_id} does not exist', 404, messages=[msg_action_cancelled_wrong()])
+
+    if manage_remove_book(existing_book):
+        folder_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], existing_book.id)
+        if os.path.exists(folder_path):
+            shutil.rmtree(folder_path, ignore_errors=True)
+    else:
+        return generate_failure_response(f'Error removing book: {str(book_id)}', messages=[msg_action_failed()])
+
+    return generate_success_response('Book removed successfully', messages=[msg_book_removed()])

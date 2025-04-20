@@ -63,7 +63,7 @@ class UpdateHeaders(ActionBookGeneralPlugin):
         return 'book'
 
     def is_ready(self):
-        return super().is_ready() and platform.system() == 'Linux'
+        return super().is_ready()
 
     def create_task(self, db_session: Session, args):
         return UpdateVolumeHeader(args['headers'])

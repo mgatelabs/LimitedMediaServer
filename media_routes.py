@@ -119,7 +119,8 @@ def list_media(user_details: dict) -> tuple:
     max_rating_checker = get_folder_rating_checker(user_details)
 
     if requested_rating_limit > max_rating:
-        return generate_failure_response('User has requested a rating limit they are not allowed to access!', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User has requested a rating limit they are not allowed to access!',
+                                         messages=[msg_access_denied_content_rating()])
 
     if is_not_blank(folder_id):
         # Make sure this exists, and you can see it
@@ -128,12 +129,14 @@ def list_media(user_details: dict) -> tuple:
             return generate_failure_response('Folder not found', 404, messages=[msg_action_cancelled_wrong()])
 
         if not max_rating_checker(current_folder):
-            return generate_failure_response('User is not allowed to view content out of their rating zone', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User is not allowed to view content out of their rating zone',
+                                             messages=[msg_access_denied_content_rating()])
 
         # App Admins see everything
         if not folder_group_checker(current_folder):
             return generate_failure_response(
-                'User is not allowed to see a folder that is owned by another group', messages=[msg_access_denied_content_rating()])
+                'User is not allowed to see a folder that is owned by another group',
+                messages=[msg_access_denied_content_rating()])
 
         total_folders = count_folders_in_folder(folder_id, filter_text, requested_rating_limit, None)
         total_files = count_files_in_folder(folder_id, filter_text, None)
@@ -179,9 +182,15 @@ def list_media(user_details: dict) -> tuple:
         # Always ensure they can see everything returned, just in case
         if max_rating_checker(row) and folder_group_checker(row):
             folder_data.append(
-                {"id": row.id, "name": row.name, "rating": row.rating, "preview": row.preview, "active": row.active,
+                {"id": row.id,
+                 "name": row.name,
+                 "rating": row.rating,
+                 "preview": row.preview,
+                 "active": row.active,
+                 'info_url': clean_string(row.info_url),
                  "created": convert_datetime_to_yyyymmdd(row.created),
-                 "updated": convert_date_to_yyyymmdd(row.last_date)})
+                 "updated": convert_date_to_yyyymmdd(row.last_date)
+                 })
 
     for row in file_rows:
         the_time = convert_datetime_to_yyyymmdd(row.created)
@@ -218,7 +227,8 @@ def get_media_folder(user_details: dict) -> tuple:
     folder_id = clean_string(request.form.get('folder_id'))
 
     if is_blank(folder_id):
-        return generate_failure_response('folder_id parameter is required', messages=[msg_missing_parameter('folder_id')])
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
 
     folder_group_checker = get_folder_group_checker(user_details)
     folder_rating_checker = get_folder_rating_checker(user_details)
@@ -229,11 +239,13 @@ def get_media_folder(user_details: dict) -> tuple:
         return generate_failure_response('Could not find requested folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checker(folder_row.rating):
-        return generate_failure_response('User is not allowed to see a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to see a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     # App Admins see everything
     if not folder_group_checker(folder_row):
-        return generate_failure_response('User is not allowed to see a folder that is owned by another group', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to see a folder that is owned by another group',
+                                         messages=[msg_access_denied_content_rating()])
 
     parent_rating = 0
     parent_group = None
@@ -273,7 +285,8 @@ def post_media_folder(user_details: dict) -> tuple:
     rating = clean_string(request.form.get('rating'))
 
     if not is_integer(rating):
-        return generate_failure_response('rating parameter is not an integer', messages=[msg_missing_parameter('rating')])
+        return generate_failure_response('rating parameter is not an integer',
+                                         messages=[msg_missing_parameter('rating')])
 
     rating = int(rating)
 
@@ -284,7 +297,8 @@ def post_media_folder(user_details: dict) -> tuple:
     folder_group_checker = get_folder_group_checker(user_details)
 
     if not user_can_see_rating(user_details, rating):
-        return generate_failure_response('User is not allowed to define a folder that has a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to define a folder that has a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     info_url = clean_string(request.form.get('info_url'))
 
@@ -314,16 +328,20 @@ def post_media_folder(user_details: dict) -> tuple:
 
         # Do you even haver access to see the lower folder
         if not folder_rating_checker(parent_row):
-            return generate_failure_response('User does not have access to parent folder', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User does not have access to parent folder',
+                                             messages=[msg_access_denied_content_rating()])
 
         if rating < parent_row.rating:
-            return generate_failure_response('Sub-folders must have a rating >= to their parent folder', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('Sub-folders must have a rating >= to their parent folder',
+                                             messages=[msg_access_denied_content_rating()])
 
         if not folder_group_checker(parent_row):
-            return generate_failure_response('User does not have access to parent folder via parent group', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User does not have access to parent folder via parent group',
+                                             messages=[msg_access_denied_content_rating()])
 
         if parent_row.owning_group_id is not None and (parent_row.owning_group_id != group_id or group_id is None):
-            return generate_failure_response('Sub-folders must have the same group security as a parent with security', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('Sub-folders must have the same group security as a parent with security',
+                                             messages=[msg_access_denied_content_rating()])
 
     insert_folder(parent_id, name, rating, info_url, tags, active, group_id, db.session)
 
@@ -352,12 +370,14 @@ def put_media_folder(user_details: dict) -> tuple:
     # Rating checks
     rating = clean_string(request.form.get('rating'))
     if not is_integer(rating):
-        return generate_failure_response('rating parameter is not an integer', messages=[msg_invalid_parameter('rating')])
+        return generate_failure_response('rating parameter is not an integer',
+                                         messages=[msg_invalid_parameter('rating')])
     rating = int(rating)
     if rating not in COMMON_MEDIA_RATINGS:
         return generate_failure_response('rating parameter is not valid', messages=[msg_invalid_parameter('rating')])
     if rating > max_rating:
-        return generate_failure_response('User is not allowed to define a folder that has a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to define a folder that has a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     info_url = clean_string(request.form.get('info_url'))
 
@@ -381,33 +401,40 @@ def put_media_folder(user_details: dict) -> tuple:
     # Make sure the folder exists
     existing_row = find_folder_by_id(folder_id)
     if existing_row is None:
-        return generate_failure_response('Could not find existing folder to edit', messages=[msg_action_cancelled_wrong()])
+        return generate_failure_response('Could not find existing folder to edit',
+                                         messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checker(existing_row):
         return generate_failure_response(
-            'You are not allowed to edit this folder, since its rating is above your limit', messages=[msg_access_denied_content_rating()])
+            'You are not allowed to edit this folder, since its rating is above your limit',
+            messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checker(existing_row):
         return generate_failure_response(
-            'You are not allowed to edit this folder, since you do not have access via group security', messages=[msg_access_denied_content_rating()])
+            'You are not allowed to edit this folder, since you do not have access via group security',
+            messages=[msg_access_denied_content_rating()])
 
     parent_row = existing_row.parent
 
     if parent_row is not None:
         # Do you even haver access to see the lower folder
         if not folder_rating_checker(parent_row):
-            return generate_failure_response('User does not have access to parent folder', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User does not have access to parent folder',
+                                             messages=[msg_access_denied_content_rating()])
 
         if rating < parent_row.rating:
             return generate_failure_response(
-                'Sub-folders must have a rating >= to their parent folder', messages=[msg_access_denied_content_rating()])
+                'Sub-folders must have a rating >= to their parent folder',
+                messages=[msg_access_denied_content_rating()])
 
         if not folder_group_checker(parent_row):
             return generate_failure_response(
-                'Parent does not have access to parent folder via group security', messages=[msg_access_denied_content_rating()])
+                'Parent does not have access to parent folder via group security',
+                messages=[msg_access_denied_content_rating()])
 
         if parent_row.owning_group_id is not None and (parent_row.owning_group_id != group_id or group_id is None):
-            return generate_failure_response('Sub-folders must have the same group security as a parent with security', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('Sub-folders must have the same group security as a parent with security',
+                                             messages=[msg_access_denied_content_rating()])
 
     if update_folder(folder_id, name, rating, info_url, tags, active, group_id, db.session):
         return generate_success_response('Folder update', messages=[msg_folder_updated()])
@@ -430,7 +457,8 @@ def delete_media_folder(user_details: dict) -> tuple:
 
     # Name checks
     if is_blank(folder_id):
-        return generate_failure_response('folder_id parameter is required', messages=[msg_missing_parameter('folder_id')])
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
 
     # Make sure the folder exists
     existing_row = find_folder_by_id(folder_id)
@@ -439,13 +467,15 @@ def delete_media_folder(user_details: dict) -> tuple:
 
     # Make sure you have access to even do this
     if not folder_rating_checks(existing_row) or not folder_group_checks(existing_row):
-        return generate_failure_response('User should not have access to this folder', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User should not have access to this folder',
+                                         messages=[msg_access_denied_content_rating()])
 
     if len(find_files_in_folder(folder_id)) > 0:
         return generate_failure_response('Child files still exist', messages=[msg_action_cancelled_folder_not_empty()])
 
     if len(find_folders_in_folder(folder_id)) > 0:
-        return generate_failure_response('Child folders still exist', messages=[msg_action_cancelled_folder_not_empty()])
+        return generate_failure_response('Child folders still exist',
+                                         messages=[msg_action_cancelled_folder_not_empty()])
 
     if existing_row.preview:
         primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
@@ -478,11 +508,13 @@ def move_media_folder(user_details: dict) -> tuple:
         return generate_failure_response('Could not find requested folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(source_row):
-        return generate_failure_response('User is not allowed to move a folder in a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to move a folder in a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(source_row):
         return generate_failure_response(
-            'User is not allowed to move a folder in a folder with a different security group', messages=[msg_access_denied_content_rating()])
+            'User is not allowed to move a folder in a folder with a different security group',
+            messages=[msg_access_denied_content_rating()])
 
     if is_not_blank(dest_folder_id):
         # Destination Folder Check
@@ -490,15 +522,18 @@ def move_media_folder(user_details: dict) -> tuple:
         target_folder_row = find_folder_by_id(dest_folder_id)
 
         if target_folder_row is None:
-            return generate_failure_response('Destination folder does not exist', messages=[msg_action_cancelled_wrong()])
+            return generate_failure_response('Destination folder does not exist',
+                                             messages=[msg_action_cancelled_wrong()])
 
         if not folder_rating_checks(target_folder_row):
             return generate_failure_response(
-                'User is not allowed to move a file into a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+                'User is not allowed to move a file into a folder with a higher rating limit',
+                messages=[msg_access_denied_content_rating()])
 
         if not folder_group_checks(target_folder_row):
             return generate_failure_response(
-                'User is not allowed to move a file into a folder with a different security group', messages=[msg_access_denied_content_rating()])
+                'User is not allowed to move a file into a folder with a different security group',
+                messages=[msg_access_denied_content_rating()])
 
         # Make sure it's not the same folder
 
@@ -551,10 +586,12 @@ def get_media_file(user_details: dict) -> tuple:
     folder_row = file_row.mediafolder
 
     if folder_row is None:
-        return generate_failure_response('File need to be placed inside a non-root folder', messages=[msg_action_cancelled_wrong()])
+        return generate_failure_response('File need to be placed inside a non-root folder',
+                                         messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(folder_row) or not folder_group_checks(folder_row):
-        return generate_failure_response('User is not allowed to see containing folder', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to see containing folder',
+                                         messages=[msg_access_denied_content_rating()])
 
     return generate_success_response('',
                                      {"file": {"id": file_row.id, "filename": file_row.filename,
@@ -581,7 +618,8 @@ def put_media_file(user_details: dict) -> tuple:
 
     # Name checks
     if is_blank(mime_type):
-        return generate_failure_response('mime_type parameter is required', messages=[msg_missing_parameter('mime_type')])
+        return generate_failure_response('mime_type parameter is required',
+                                         messages=[msg_missing_parameter('mime_type')])
 
     # Make sure it's a known file type
     if not is_valid_mime_type(mime_type):
@@ -600,7 +638,8 @@ def put_media_file(user_details: dict) -> tuple:
         return generate_failure_response('File does not have a parent', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(folder_row) or not folder_group_checks(folder_row):
-        return generate_failure_response('User does not have access to containing folder', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User does not have access to containing folder',
+                                         messages=[msg_access_denied_content_rating()])
 
     if update_file(file_id, filename, mime_type, db.session):
         return generate_success_response('File update', messages=[msg_file_updated()])
@@ -635,7 +674,8 @@ def put_media_progress(user_details: dict) -> tuple:
         return generate_failure_response('File does not have a parent', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(folder_row) or not folder_group_checks(folder_row):
-        return generate_failure_response('User does not have access to containing folder', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User does not have access to containing folder',
+                                         messages=[msg_access_denied_content_rating()])
 
     try:
         progress = float(progress)
@@ -679,11 +719,13 @@ def migrate_media_file(user_details: dict) -> tuple:
         return generate_failure_response('File does not have a parent', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(folder_row):
-        return generate_failure_response('User is not allowed to edit a file in a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to edit a file in a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(folder_row):
         return generate_failure_response(
-            'User is not allowed to edit a file in a folder owned by another security group', messages=[msg_access_denied_content_rating()])
+            'User is not allowed to edit a file in a folder owned by another security group',
+            messages=[msg_access_denied_content_rating()])
 
     primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
     archive_folder = current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER]
@@ -723,11 +765,13 @@ def delete_media_file(user_details: dict) -> tuple:
         return generate_failure_response('File does not have a parent', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(folder_row):
-        return generate_failure_response('User is not allowed to delete a file in a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to delete a file in a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(folder_row):
         return generate_failure_response(
-            'User is not allowed to delete a file in a folder with a different security group', messages=[msg_access_denied_content_rating()])
+            'User is not allowed to delete a file in a folder with a different security group',
+            messages=[msg_access_denied_content_rating()])
 
     primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
     archive_folder = current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER]
@@ -776,11 +820,13 @@ def move_media_file(user_details: dict) -> tuple:
         return generate_failure_response('File needs to be inside of a folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(folder_row):
-        return generate_failure_response('User is not allowed to move a file in a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to move a file in a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(folder_row):
         return generate_failure_response(
-            'User is not allowed to move a file in a folder with a different security group', messages=[msg_access_denied_content_rating()])
+            'User is not allowed to move a file in a folder with a different security group',
+            messages=[msg_access_denied_content_rating()])
 
     # Destination Folder Check
 
@@ -790,11 +836,13 @@ def move_media_file(user_details: dict) -> tuple:
         return generate_failure_response('Destination folder does not exist', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(target_folder_row):
-        return generate_failure_response('User is not allowed to move a file into a folder with a higher rating limit', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to move a file into a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(target_folder_row):
         return generate_failure_response(
-            'User is not allowed to move a file into a folder with a different security group', messages=[msg_access_denied_content_rating()])
+            'User is not allowed to move a file into a folder with a different security group',
+            messages=[msg_access_denied_content_rating()])
 
     if target_folder_row.id == folder_row.id:
         return generate_failure_response(
@@ -835,7 +883,8 @@ def upload_file(user_details):
         return generate_failure_response('Could not find folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(existing_row) or not folder_group_checks(existing_row):
-        return generate_failure_response('User does not have access to the target folder', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User does not have access to the target folder',
+                                         messages=[msg_access_denied_content_rating()])
 
     new_file = insert_file(existing_row.id, uploaded_file.filename, uploaded_file.mimetype, False, False,
                            uploaded_file.content_length, datetime.now(timezone.utc), db.session)
@@ -883,7 +932,8 @@ def upload_media_preview(user_details):
         return generate_failure_response('Could not find folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(existing_row) or not folder_group_checks(existing_row):
-        return generate_failure_response('User does not have access to the target folder', messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User does not have access to the target folder',
+                                         messages=[msg_access_denied_content_rating()])
 
     primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
 
@@ -1108,7 +1158,8 @@ def stream_media_file(user_details):
     if not folder_rating_checks(containing_folder) or not folder_group_checks(containing_folder):
         return generate_failure_response('User is not allowed to see this folder', 403)
 
-    target_path = get_data_for_mediafile(file, current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER], current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER])
+    target_path = get_data_for_mediafile(file, current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER],
+                                         current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER])
 
     if target_path is None or not os.path.isfile(target_path):
         return generate_failure_response('requested file not found', 404)
@@ -1168,7 +1219,8 @@ def request_unsafe_stream_media_file(user_details):
         return generate_failure_response('file error, missing parent', 400, messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(containing_folder) or not folder_group_checks(containing_folder):
-        return generate_failure_response('User is not allowed to see this folder', 403, messages=[msg_access_denied_content_rating()])
+        return generate_failure_response('User is not allowed to see this folder', 403,
+                                         messages=[msg_access_denied_content_rating()])
 
     slc: ShortLivedCache = current_app.config[APP_KEY_SLC]
 
@@ -1206,7 +1258,8 @@ def unsafe_stream_media_file():
     is_archive = file.archive
     mimetype = file.mime_type
 
-    target_path = get_data_for_mediafile(file, current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER], current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER])
+    target_path = get_data_for_mediafile(file, current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER],
+                                         current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER])
 
     if target_path is None or not os.path.isfile(target_path):
         return generate_failure_response('requested file not found', 404)
@@ -1270,10 +1323,12 @@ def get_media_nodes(user_details: dict) -> tuple:
 
         # And the user can see it!
         if not max_rating_checker(current_folder):
-            return generate_failure_response('User is not allowed to view content out of their rating zone', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User is not allowed to view content out of their rating zone',
+                                             messages=[msg_access_denied_content_rating()])
 
         if not folder_checker(current_folder):
-            return generate_failure_response('User is not allowed to see a node that is owned by another group', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User is not allowed to see a node that is owned by another group',
+                                             messages=[msg_access_denied_content_rating()])
 
         # Grab the folders
         folder_rows = find_folders_in_folder(folder_id, None, max_rating, 0, 0, db_session=None)
@@ -1322,10 +1377,12 @@ def get_media_node(user_details: dict) -> tuple:
 
         # And the user can see it!
         if not max_rating_checker(current_folder):
-            return generate_failure_response('User is not allowed to view content out of their rating zone', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User is not allowed to view content out of their rating zone',
+                                             messages=[msg_access_denied_content_rating()])
 
         if not folder_checker(current_folder):
-            return generate_failure_response('User is not allowed to see a folder that is owned by another group', messages=[msg_access_denied_content_rating()])
+            return generate_failure_response('User is not allowed to see a folder that is owned by another group',
+                                             messages=[msg_access_denied_content_rating()])
 
     else:
         # We need a NODE ID
@@ -1374,7 +1431,7 @@ def list_history(user_details):
 
     max_rating = get_media_max_rating(user_details)
 
-    rows= find_progress_entries(user_uid, max_rating)
+    rows = find_progress_entries(user_uid, max_rating)
 
     results = []
 

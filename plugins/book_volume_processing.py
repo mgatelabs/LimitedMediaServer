@@ -4,14 +4,55 @@ from typing import Optional
 from flask_sqlalchemy.session import Session
 
 from db import Book
-from file_utils import delete_empty_folders
+from file_utils import delete_empty_folders, is_text_file
 from html_utils import download_unsecure_file, download_secure_file, get_headers, get_headers_when_empty
 from image_utils import clean_images_folder
 from plugins.book_update_stats import generate_db_for_folder
+from plugins.general_test_connection import is_valid_image
 from processors.processor_core import CustomDownloadInterface
 from text_utils import is_not_blank
 from thread_utils import TaskWrapper
 from utility import random_sleep
+
+
+def _process_file_download(headers_required: bool, task_wrapper: TaskWrapper, image_info, destination_folder,
+                           headers) -> str:
+    try_count = 0
+
+    file_output = os.path.join(destination_folder, image_info['file'])
+
+    while True:
+        if headers_required:
+            if task_wrapper.can_trace():
+                task_wrapper.trace('Secure: ' + image_info['src'])
+            if download_secure_file(
+                    image_info['src'], destination_folder,
+                    image_info['file'], headers, task_wrapper):
+                pass
+            else:
+                task_wrapper.critical('Invalid Secure download, stopping')
+                return "F"
+        else:
+            task_wrapper.trace('Insecure: ' + image_info['src'])
+            if download_unsecure_file(
+                    image_info['src'], destination_folder,
+                    image_info['file'], headers, task_wrapper):
+                pass
+            else:
+                task_wrapper.critical('Invalid Insecure download, stopping')
+                return "F"
+
+        if not is_text_file(file_output):
+            return "S"
+        else:
+            task_wrapper.debug("Found Text File, Trying Again")
+            random_sleep(20, 15, task_wrapper)
+
+        try_count = try_count + 1
+        if try_count > 5:
+            task_wrapper.set_failure()
+            task_wrapper.error("Too many failed attempts, failing")
+            return "X"
 
 
 def _process_download(processor, token, book: Book, task_wrapper, book_folder: str, storage_format: str,
@@ -42,12 +83,16 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
     if task_wrapper.can_trace():
         task_wrapper.trace(f'Book {book_id}')
 
-    if chapter_url is not None and chapter_name is not  None:
+    if chapter_url is not None and chapter_name is not None:
         chapters = [{'chapter': chapter_name, 'href': chapter_url}]
         task_wrapper.info(f'Forced Chapter: {chapter_name}')
     else:
         chapters = processor.list_chapters(book, headers)
         task_wrapper.info(f'Chapters Found: {len(chapters)}')
+
+    if len(chapters) == 0:
+        task_wrapper.set_warning()
+        task_wrapper.warn('No chapters returned from service')
 
     book_index = 0
     chapter_index = 0
@@ -100,16 +145,17 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
 
         if image_list is None or len(image_list) == 0:
             task_wrapper.set_failure()
-            task_wrapper.error('Did not get images from processor')
+            task_wrapper.error(f'Chapter: {chapter["chapter"]} - Processor did not return images')
             return False
 
-        if task_wrapper.can_debug():
-            task_wrapper.debug(f'Number of Images: {len(image_list)}')
+        task_wrapper.info(f'Chapter: {chapter["chapter"]} ({len(image_list)} images)' )
 
         downloaded_chapters = downloaded_chapters + 1
 
         current_image = 0
 
+        check_image = True
+        stop_download = False
         for image_info in image_list:
 
             if headers_required:
@@ -119,36 +165,47 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
                     headers = pre_headers
 
             if 'secure' in image_info and image_info['secure']:
-                headers = get_headers_when_empty(headers, site_url, task_wrapper)
+                ref_url = site_url
+                if 'ref' in image_info:
+                    ref_url = image_info['ref']
+                    headers = None
+                headers = get_headers_when_empty(headers, ref_url, task_wrapper)
 
                 if headers is None:
                     task_wrapper.critical('Headers not found, stopping')
                     task_wrapper.set_failure(True)
                     return False
 
-            if headers_required:
-                if download_secure_file(
-                        image_info['src'], destination_folder,
-                        image_info['file'], headers, task_wrapper):
-                    downloaded_images = downloaded_images + 1
-                    current_image = current_image + 1
-                    task_wrapper.update_percent(100.0 * (current_image / len(image_list)))
-                    modified = True
-                    random_sleep(3)
-                else:
-                    task_wrapper.critical('Invalid Secure download, stopping')
-                    break
-            else:
-                if download_unsecure_file(
-                        image_info['src'], destination_folder,
-                        image_info['file'], headers, task_wrapper):
-                    downloaded_images = downloaded_images + 1
-                    current_image = current_image + 1
-                    task_wrapper.update_percent(100.0 * (current_image / len(image_list)))
-                    modified = True
-                    random_sleep(3)
-                else:
-                    task_wrapper.critical('Invalid Insecure download, stopping')
+            min_duration = 1
+            delay = 3
+            if 'delay' in image_info:
+                delay = image_info['delay']
+                if delay < 3:
+                    delay = 3
+                min_duration = delay - 2
+
+            if headers is not None:
+                headers['accept'] = 'image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5'
+
+            resu = _process_file_download(headers_required, task_wrapper, image_info, destination_folder, headers)
+            if resu == 'X':
+                stop_download = True
+                break
+            elif resu == 'E':
+                break
+
+            downloaded_images = downloaded_images + 1
+            current_image = current_image + 1
+            task_wrapper.update_percent(100.0 * (current_image / len(image_list)))
+            modified = True
+            random_sleep(delay, min_duration)
+
+            if check_image:
+                check_image = False
+                image_path = os.path.join(destination_folder, image_info['file'])
+                if not is_valid_image(image_path):
+                    task_wrapper.critical('1st file is not an image, stopping')
+                    task_wrapper.info(chapter['href'])
                     break
 
         # Get rid of bad files
@@ -156,6 +213,9 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
 
         # Get rid of junk files and fix images
         processor.clean_folder(book, chapter, destination_folder, storage_format)
+
+        if stop_download:
+            break
 
     if skipped_chapters > 0:
         task_wrapper.info(f'Skipped {skipped_chapters} Chapters')
@@ -245,7 +305,7 @@ class VolumeProcessor:
         if processor is not None:
             self.task_wrapper.info('Using ' + processor.processor_name + " Processor")
             _process_download(processor.clone_to(self.task_wrapper), token, book, self.task_wrapper,
-                                            self.book_folder, self.storage_format, clean_all, chapter_url, chapter_name)
+                              self.book_folder, self.storage_format, clean_all, chapter_url, chapter_name)
         else:
             self.task_wrapper.critical('Unknown Processor: ' + book_type)
 

@@ -4,13 +4,13 @@ import tempfile
 from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlparse
+import mimetypes
 
 import requests
 from bs4 import BeautifulSoup
 
 from curl_utils import custom_curl_get, read_temp_file, custom_curl_post, custom_curl_headers
 from thread_utils import TaskWrapper
-
 
 def download_unsecure_file(url, destination_folder, filename, headers=None, task_logger: TaskWrapper = None):
     """
@@ -250,6 +250,19 @@ def get_headers_when_empty(headers, url, task_wrapper: TaskWrapper, alt_url: str
 
     return get_headers(url, True, task_wrapper, False, alt_url)
 
+def has_valid_headers():
+    file_path = './headers.json'
+
+    if not os.path.exists(file_path):
+        return False
+
+    # Get the last modification time of the file
+    modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+
+    # Calculate the time 2 hours ago
+    time_limit = datetime.now() - timedelta(hours=8)
+
+    return modified_time >= time_limit
 
 def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool = False, alt_url: str = None, ignore_errors: bool = False) -> \
         Optional[dict[str, str]]:
@@ -266,7 +279,6 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
     Returns:
     Optional[dict[str, str]]: Dictionary containing the headers, or None if an error occurs.
     """
-    headers = None
 
     file_path = './headers.json'
     if test:
@@ -276,43 +288,43 @@ def get_headers(url: str, is_page: bool, task_wrapper: TaskWrapper, test: bool =
         # Look up one folder
         file_path = '../headers.json'
 
-    # Get the last modification time of the file
-    modified_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+    with open(file_path, 'r') as file:
+        try:
+            headers = json.load(file)
 
-    # Calculate the time 2 hours ago
-    time_limit = datetime.now() - timedelta(hours=3)
+            if is_page:
+                headers["accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+            else:
+                headers["accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            headers["Accept-Encoding"] = "gzip, deflate, br, zstd"
 
-    # Check if the file was modified within the last 2 hours
-    if modified_time >= time_limit:
-        with open(file_path, 'r') as file:
-            try:
-                headers = json.load(file)
+            # Use alt_url if provided, otherwise use url
+            referer_url = alt_url if alt_url and len(alt_url) > 0 else url
 
-                if is_page:
-                    headers[
-                        "accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
-                else:
-                    headers["accept"] = "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+            if task_wrapper is not None and task_wrapper.can_trace():
+                task_wrapper.trace(f'referer_url: {referer_url}')
+                task_wrapper.trace(f'cleaned_referer_url: {get_base_url(referer_url)}')
 
-                # Use alt_url if provided, otherwise use url
-                referer_url = alt_url if alt_url and len(alt_url) > 0 else url
+            headers["referer"] = get_base_url(referer_url)
+            headers["authority"] = get_authority_url(referer_url)
 
-                if task_wrapper is not None and task_wrapper.can_trace():
-                    task_wrapper.trace(f'referer_url: {referer_url}')
-                    task_wrapper.trace(f'cleaned_referer_url: {get_base_url(referer_url)}')
+            return headers
+        except json.JSONDecodeError:
+            task_wrapper.error(f"Failed to load JSON from headers.json.")
+            if not ignore_errors:
+                task_wrapper.set_failure(True)
+            return None
 
-                headers["referer"] = referer_url
-                headers["authority"] = get_authority_url(referer_url)
 
-                return headers
-            except json.JSONDecodeError:
-                task_wrapper.error(f"Failed to load JSON from headers.json.")
-                if not ignore_errors:
-                    task_wrapper.set_failure(True)
-                return None
-    else:
-        task_wrapper.critical(f"File headers.json was not modified within the last 2 hours.")
-        if not ignore_errors:
-            task_wrapper.set_failure(True)
-        return None
+def guess_file_extension(url: str) -> str:
+    # Extract the path from the URL
+    path = urlparse(url).path
 
+    # Guess the MIME type based on the URL's path
+    mime_type, _ = mimetypes.guess_type(path)
+
+    # Mapping of MIME types to extensions
+    valid_extensions = {"image/webp": "webp", "image/jpeg": "jpeg", "image/jpg": "jpg", "image/png": "png"}
+
+    # Return the guessed extension or default to 'jpg'
+    return valid_extensions.get(mime_type, "jpg")

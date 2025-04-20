@@ -128,6 +128,9 @@ class CustomDownloadInterface(ABC):
                 """
         return False
 
+    def check_and_retry(self):
+        return False
+
     # noinspection PyMethodMayBeStatic
     def rss_description(self):
         """

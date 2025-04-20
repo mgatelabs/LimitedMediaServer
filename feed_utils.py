@@ -37,3 +37,9 @@ def extract_guid_numbers(value):
         return first_number, second_number
     else:
         return -1, -1
+
+def fix_hyphenated_numbers(text):
+    return re.sub(r'(\d+)-(\d+)', r'\1.\2', text)
+
+def extract_guid_numbers_hyphens(value):
+    return extract_guid_numbers(fix_hyphenated_numbers(value))

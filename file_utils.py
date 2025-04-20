@@ -140,3 +140,31 @@ def create_timestamped_folder(base_path):
     os.makedirs(new_folder_path, exist_ok=True)
     # Return the new folder path
     return new_folder_path
+
+def is_text_file(file_path, num_bytes=64):
+    try:
+        with open(file_path, 'rb') as f:
+            chunk = f.read(num_bytes)
+        # Try decoding as UTF-8 (strict mode to catch encoding issues)
+        chunk.decode('utf-8')
+        return True  # Successfully decoded as UTF-8, so it's text
+    except (UnicodeDecodeError, FileNotFoundError):
+        pass
+
+    try:
+        with open(file_path, 'rb') as f:
+            chunk = f.read(num_bytes + 1)
+        # Try decoding as UTF-8 (strict mode to catch encoding issues)
+        chunk.decode('utf-8')
+        return True  # Successfully decoded as UTF-8, so it's text
+    except (UnicodeDecodeError, FileNotFoundError):
+        pass
+
+    try:
+        with open(file_path, 'rb') as f:
+            chunk = f.read(num_bytes + 2)
+        # Try decoding as UTF-8 (strict mode to catch encoding issues)
+        chunk.decode('utf-8')
+        return True  # Successfully decoded as UTF-8, so it's text
+    except (UnicodeDecodeError, FileNotFoundError):
+        return False

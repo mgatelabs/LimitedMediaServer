@@ -112,3 +112,16 @@ def parse_boolean(input_string: str) -> bool:
     :return: True or False
     """
     return input_string.lower().strip() == 'true'
+
+
+def extract_last_number_parts(s):
+    numbers = re.findall(r'\d+\.?\d*', s)  # Find all numbers (including decimals)
+    if not numbers:
+        return None, None  # Return None if no number is found
+
+    last_number = numbers[-1]  # Get the last number found
+    if '.' in last_number:
+        integer_part, decimal_part = last_number.split('.')
+        return int(integer_part), int(decimal_part)  # Convert both parts to integers
+    else:
+        return int(last_number), 0  # Whole number, decimal part is 0

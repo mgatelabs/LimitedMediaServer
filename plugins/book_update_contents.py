@@ -8,6 +8,7 @@ from flask_sqlalchemy.session import Session
 
 from db import Book
 from feature_flags import MANAGE_VOLUME
+from html_utils import has_valid_headers
 from plugin_methods import plugin_long_string_arg, plugin_select_arg, plugin_select_values, plugin_url_arg
 from plugin_system import ActionBookSpecificPlugin, ActionBookGeneralPlugin
 from plugins.book_update_headers import UpdateVolumeHeader
@@ -128,6 +129,8 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
 
         if 'headers' not in args or is_blank(args['headers']):
             args['headers'] = None
+            if not has_valid_headers():
+                results.append('headers are required to continue')
         elif not args['headers'].startswith('curl'):
             results.append('headers must be a curl bash command')
         else:
@@ -161,7 +164,7 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
         for book in interleaved_books:
             if processor_filter == '*' or processor_filter == book.processor:
                 results.append(
-                    DownloadBookJob("GetBook", f'Updating: {book.name}', book.id, self.processors,
+                    DownloadBookJob("GetBook", f'Updating: {book.name} ({book.processor})', book.id, self.processors,
                                     self.book_storage_folder, self.book_storage_format,
                                     cleaning))
 
@@ -224,6 +227,8 @@ class UpdateSingleBookPlugin(ActionBookSpecificPlugin):
 
         if 'headers' not in args or is_blank(args['headers']):
             args['headers'] = None
+            if not has_valid_headers():
+                results.append('headers are required to continue')
         elif not args['headers'].startswith('curl'):
             results.append('headers must be a curl bash command')
         else:

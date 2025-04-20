@@ -563,3 +563,19 @@ def manage_book_chapters(book_id: str, chapters, logger: TaskWrapper = None, db_
     except Exception as ex:
         logging.exception(ex)
         logger.info(existing_lookup)
+
+
+# Function to manage book chapters
+def manage_remove_book(book: Book, logger: TaskWrapper = None, db_session: Session = db.session) -> bool:
+    try:
+        if logger is not None and logger.can_trace():
+            logger.trace(f"Removing book {book.id}")
+        db_session.delete(book)
+        db_session.commit()
+        return True
+    except Exception as ex:
+        db_session.rollback()
+        logging.exception(ex)
+        if logger is not None:
+            logger.info(str(ex))
+    return False

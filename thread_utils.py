@@ -1,12 +1,13 @@
 import inspect
 import sys
 import threading
+import time
 import traceback
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from queue import PriorityQueue
 from typing import Optional
-
+import json
 
 def get_caller_info():
     """
@@ -21,6 +22,14 @@ def get_caller_info():
     line_number = caller_frame.f_lineno
     return filename, line_number
 
+class TaskWorker:
+
+    def __init__(self, index):
+        self.index = index
+        self.online = True
+        self.position = 0
+        self.job = 0
+        self.wait_stamp = 0
 
 class TaskManager:
     """
@@ -29,12 +38,26 @@ class TaskManager:
 
     def __init__(self, max_capacity=100):
 
+        self.known_workers: list[TaskWorker] = []
+
         self.task_queue = PriorityQueue()
         self.task_lookup: dict[int, TaskWrapper] = {}  # Map task IDs to task objects
         self.lock = threading.Lock()
-        self.finished_tasks = {}  # Store finished tasks
+        self.running_tasks: dict[int, TaskWrapper] = {}  # Store running tasks
+        self.finished_tasks: dict[int, TaskWrapper] = {}  # Store finished tasks
         self.max_capacity = max_capacity  # Total capacity
         self.current_capacity = 0  # Capacity currently in use
+
+    def get_worker_status(self):
+        result = []
+        for worker in self.known_workers:
+            result.append({'index': worker.index,'online': worker.online,'position': worker.position,'job': worker.job})
+        return result
+
+    def add_worker(self, index: int) -> TaskWorker:
+        new_worker = TaskWorker(index)
+        self.known_workers.append(new_worker)
+        return new_worker
 
     def add_task(self, task: 'TaskWrapper'):
         with self.lock:
@@ -93,13 +116,14 @@ class TaskManager:
             # Step 3: Check eligible tasks for capacity
             for task in [first_task] + eligible_tasks:
                 if task.weight + self.current_capacity <= self.max_capacity:
-                    # Task can run, adjust capacity and return it
-                    self.current_capacity += task.weight
 
                     # Put back skipped tasks
                     for skipped_task in temp_queue + eligible_tasks:
                         if skipped_task.task_id != task.task_id:  # Don't re-add the running task
                             self.task_queue.put(skipped_task)
+
+                    self.running_tasks[task.task_id] = task
+                    self._update_weights()
 
                     return task
 
@@ -109,12 +133,28 @@ class TaskManager:
 
             return None  # No task could fit in the current capacity
 
-    def task_done_queue(self, task: 'TaskWrapper'):
+    def _update_weights(self):
+        calculated_weight = 0
+        for running_task in self.running_tasks.values():
+            calculated_weight = calculated_weight + running_task.weight
+
+        self.current_capacity = calculated_weight
+
+    def task_done_queue(self, task: 'TaskWrapper', worker_status: TaskWorker):
+        worker_status.position = 88
+        time.sleep(0.001)
         with self.lock:
+            time.sleep(0.1)
+            worker_status.position = 89
             if task.task_id in self.task_lookup:
                 self.finished_tasks[task.task_id] = task
                 del self.task_lookup[task.task_id]
-            self.current_capacity -= task.weight
+            worker_status.position = 90
+            if task.task_id in self.running_tasks:
+                del self.running_tasks[task.task_id]
+            worker_status.position = 91
+            self._update_weights()
+            worker_status.position = 92
             self.task_queue.task_done()
 
     def get_finished_tasks(self):
@@ -147,6 +187,20 @@ class TaskManager:
                 return self.finished_tasks[task_id]
             return None
 
+    def remove_dead_tasks(self) -> int:
+        """
+        Remove dead tasks
+        :return: Number of removed tasks
+        """
+        with self.lock:
+            before = len(self.known_workers)
+            self.known_workers = [
+                known for known in self.known_workers
+                if not (known.position == 72 and 0 < known.wait_stamp < time.time() - 5)
+            ]
+            removed = before - len(self.known_workers)
+        return removed
+
     def get_all_tasks(self) -> list['TaskWrapper']:
         """
         Get all tasks in the task list.
@@ -160,6 +214,10 @@ class TaskManager:
 
             # Sort by task_id to maintain submission order
             return sorted(all_tasks, key=lambda task: task.task_id)
+
+    def get_weight(self) -> int:
+        return self.current_capacity
+
 
     def clean_tasks(self, hard_clean: bool = True) -> int:
 
