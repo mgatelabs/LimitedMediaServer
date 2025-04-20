@@ -283,3 +283,14 @@ def merge_two_images(image_a_path: str, image_b_path: str):
         return True
     except Exception as e:
         raise ValueError(f"An error occurred: {e}")
+
+
+def is_valid_image(filepath):
+    try:
+        # Try opening the image file
+        img = Image.open(filepath)
+        # Verify the image by loading it
+        img.verify()  # This ensures it's a valid image without fully decoding it
+        return True
+    except (IOError, SyntaxError) as e:
+        return False

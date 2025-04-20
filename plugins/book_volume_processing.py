@@ -6,9 +6,8 @@ from flask_sqlalchemy.session import Session
 from db import Book
 from file_utils import delete_empty_folders, is_text_file
 from html_utils import download_unsecure_file, download_secure_file, get_headers, get_headers_when_empty
-from image_utils import clean_images_folder
+from image_utils import clean_images_folder, is_valid_image
 from plugins.book_update_stats import generate_db_for_folder
-from plugins.general_test_connection import is_valid_image
 from processors.processor_core import CustomDownloadInterface
 from text_utils import is_not_blank
 from thread_utils import TaskWrapper
