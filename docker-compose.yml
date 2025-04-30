@@ -1,0 +1,18 @@
+version: '3.3'
+services:
+  limitedmediaserver:
+    restart: always
+    volumes:
+      - '/path/to/lms/database:/app/LimitedMediaServer/instance'
+      - '/path/to/backup:/data/backup'
+      - '/path/to/media/archive:/data/archive'
+      - '/path/to/media/primary:/data/primary'
+      - '/path/to/media/temp:/data/temp'
+      - '/path/to/volume:/data/volume'
+    ports:
+      - '5000:5000'
+    environment:
+      - PUID=0
+      - PGID=0
+    container_name: limitedmediaserver
+    image: 'mgatelabs/limitedmediaserver:latest'
