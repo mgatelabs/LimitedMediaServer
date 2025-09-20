@@ -61,6 +61,10 @@ I built this server to take advantage of the new Raspberry PI 5 feature to run o
 
 ![image](https://github.com/user-attachments/assets/56eab409-3375-40b7-9312-dc4cbd167817)=
 
+### Example Media Player
+
+<img width="1036" height="664" alt="image" src="https://github.com/user-attachments/assets/409b1717-3fbc-4c4b-9371-13f24a61caba" />
+
 ### Example Split Media Browser
 
 ![image](https://github.com/user-attachments/assets/cefcb7ed-afa2-45ab-92b2-f76788fd486d)
