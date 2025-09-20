@@ -430,11 +430,14 @@ def backup_media_progress(output_folder, db_session: Session, user_lookup: dict[
     count = 0
     with open(file_path, "w") as file:
         for row in rows:
+            if row.user_id not in user_lookup:
+                continue
             new_row = {"@user": user_lookup[row.user_id], "file_id": row.file_id, "progress": row.progress,
                        "timestamp": row.timestamp.isoformat()}
 
             dumped_row = json.dumps(new_row)
             file.write(dumped_row + "\n")
+            tw.trace(dumped_row)
             count += 1
 
     tw.debug(f'Wrote {count} Media Progress Records')
@@ -652,7 +655,7 @@ def perform_restore(restore_path: str, tw: TaskWrapper):
     volume_folder = get_volume_folder()
     if is_not_blank(volume_folder) and os.path.isdir(volume_folder):
         tw.info('Updating Book Cache')
-        generate_book_definitions(tw, None, volume_folder, False, db_session)
+        generate_book_definitions(tw, None, volume_folder, False, sync_tags=True, session=db_session)
     else:
         tw.warn('Did not update Book Cache')
 

@@ -119,7 +119,7 @@ class DownloadYtJob(TaskWrapper):
 
             return_code = str(process.returncode)
 
-            if return_code == '0':
+            if return_code == '0' or return_code == '1':
                 self.set_worked()
 
                 possible_filenames = os.listdir(temp_folder)

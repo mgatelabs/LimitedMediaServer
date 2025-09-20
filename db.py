@@ -82,6 +82,12 @@ class UserLimit(db.Model):
     # Ensure unique limit types per user
     __table_args__ = (db.UniqueConstraint('user_id', 'limit_type', name='user_limit_uc'),)
 
+# Association table (no model class needed unless you want extra fields like "added_at")
+book_tags = db.Table(
+    'book_tags',
+    db.Column('book_id', db.String(128), db.ForeignKey('books.id'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('tags.id'), primary_key=True)
+)
 
 # Book model
 class Book(db.Model):
@@ -111,7 +117,15 @@ class Book(db.Model):
 
     # Establish relationship with Chapter
     chapters = db.relationship("Chapter", back_populates="book", cascade="all, delete-orphan", lazy=True)
+    tags_rel = db.relationship("Tag", secondary=book_tags, back_populates="books", lazy="dynamic")
 
+class Tag(db.Model):
+    __tablename__ = 'tags'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(64), unique=True, nullable=False)
+
+    books = db.relationship("Book", secondary=book_tags, back_populates="tags_rel")
 
 # Chapter model
 class Chapter(db.Model):

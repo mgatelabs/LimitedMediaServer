@@ -32,7 +32,7 @@ def clean_files_for_mediafile(file: MediaFile, primary_path: str, archive_path: 
 
 
 def get_preview_for_mediafile(file: MediaFile, primary_path: str) -> str:
-    return os.path.join(primary_path, file.id + '_prev.png')
+    return os.path.join(primary_path, file.id + '_prev.webp')
 
 
 def get_data_for_mediafile(file: MediaFile, primary_path: str, archive_path: str) -> str:

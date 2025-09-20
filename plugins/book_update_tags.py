@@ -11,7 +11,7 @@ from plugins.book_update_contents import group_books_by_processor, interleave_bo
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
 from thread_utils import TaskWrapper
-from volume_queries import find_book_by_id
+from volume_queries import find_book_by_id, sync_book_tags
 
 
 class CheckAllTagsTask(ActionBookGeneralPlugin):
@@ -182,6 +182,8 @@ class CheckBookTagsTask(TaskWrapper):
             if status is not None and status:
                 self.info('Book tags updates')
                 self.set_worked()
+                tag_list = [t.strip().upper() for t in (book.tags or "").split(",") if t.strip()]
+                sync_book_tags(book, tag_list, db_session, False)
                 db_session.commit()
         else:
             self.critical('Could not find book: ' + self.book_id)

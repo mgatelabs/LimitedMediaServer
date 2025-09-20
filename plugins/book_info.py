@@ -57,7 +57,8 @@ class BookDetails(TaskWrapper):
 
     def run(self, db_session):
 
-        books = list_books_for_rating(get_uid(self.user), get_volume_max_rating(self.user), None, Book.name, False, 0, 0, db_session)
+        books = list_books_for_rating(get_uid(self.user), get_volume_max_rating(self.user), None, sort_field=Book.name,
+                                      sort_descending=False, query_offset=0, query_limit=0, db_session=db_session)
 
         for book, progress in books:
             self.always('Book: ' + book.name + ' (' + book.id + ')')

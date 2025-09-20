@@ -3,6 +3,7 @@ import platform
 import random
 from itertools import cycle
 import re
+import datetime
 
 from flask_sqlalchemy.session import Session
 
@@ -91,15 +92,21 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
 
     def get_action_args(self):
 
-        values = [{"id": "*", "name": "All"}]
+        filter_values = [{"id": "*", "name": "All"}]
+        exclude_values = [{"id": "*", "name": "None"}]
 
         for processor in self.processors:
-            values.append({"id": processor.processor_id, "name": processor.processor_name})
+            filter_values.append({"id": processor.processor_id, "name": processor.processor_name})
+            exclude_values.append({"id": processor.processor_id, "name": processor.processor_name})
 
         result = super().get_action_args()
 
         result.append(
-            plugin_select_arg('Filter', 'filter', '*', values, "When not *, only Processors that match will execute.",
+            plugin_select_arg('Filter', 'filter', '*', filter_values, "When not *, only Processors that match will execute.",
+                              'book'))
+
+        result.append(
+            plugin_select_arg('Exclude', 'exclude', '*', exclude_values, "Choose a processor to not process.",
                               'book'))
 
         result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
@@ -123,6 +130,9 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
 
         if 'filter' not in args or args['filter'] is None or is_blank(args['filter']) == '':
             results.append('filter is required')
+
+        if 'exclude' not in args or args['exclude'] is None or is_blank(args['exclude']) == '':
+            results.append('exclude is required')
 
         if 'cleaning' not in args or args['cleaning'] is None or args['cleaning'] == '':
             results.append('cleaning is required')
@@ -154,19 +164,21 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
 
         cleaning = (args['cleaning'] == 'a')
 
-        books = db_session.query(Book).filter(Book.active == True).all()
+        seven_days_ago = datetime.date.today() - datetime.timedelta(days=7)
+
+        books = db_session.query(Book).filter(Book.active == True, Book.last_date < seven_days_ago).all()
 
         grouped_books = group_books_by_processor(books)
         interleaved_books = interleave_books(grouped_books)
 
         processor_filter = args['filter']
+        exclude_filter = args['exclude']
 
         for book in interleaved_books:
-            if processor_filter == '*' or processor_filter == book.processor:
+            if (processor_filter == '*' or processor_filter == book.processor) and (exclude_filter == '*' or (exclude_filter != book.processor)):
                 results.append(
                     DownloadBookJob("GetBook", f'Updating: {book.name} ({book.processor})', book.id, self.processors,
-                                    self.book_storage_folder, self.book_storage_format,
-                                    cleaning))
+                                    self.book_storage_folder, self.book_storage_format, cleaning))
 
         return results
 

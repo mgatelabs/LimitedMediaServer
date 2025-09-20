@@ -6,6 +6,7 @@ from flask_sqlalchemy.session import Session
 from constants import PROPERTY_SERVER_VOLUME_FOLDER
 from date_utils import convert_yyyymmdd_to_date, convert_timestamp_to_datetime
 from feature_flags import MANAGE_VOLUME
+from file_utils import reset_folder
 from image_utils import resize_image
 from plugin_methods import plugin_select_arg, plugin_select_values
 from plugin_system import ActionBookSpecificPlugin, ActionBookGeneralPlugin
@@ -45,7 +46,12 @@ class UpdateAllCaches(ActionBookGeneralPlugin):
         return 'healing'
 
     def get_action_args(self):
-        return [plugin_select_arg("Clean Previews", "clean_previews", "n", plugin_select_values('No', 'n', 'Yes', 'y'), "Should the preview images be re-created?", 'bkclnall')]
+        return [
+            plugin_select_arg("Clean Previews", "clean_previews", "n", plugin_select_values('No', 'n', 'Yes', 'y'),
+                              "Should the preview images be re-created?", 'bkclnall'),
+            plugin_select_arg("Update Tags", "update_tags", "n", plugin_select_values('No', 'n', 'Yes', 'y'),
+                              "Sync book tags?", 'bkclnall')
+        ]
 
     def process_action_args(self, args):
         return None
@@ -57,7 +63,10 @@ class UpdateAllCaches(ActionBookGeneralPlugin):
         super().absorb_config(config)
 
     def create_task(self, db_session: Session, args):
-        return UpdateAllJson("Update", 'All Volume Definitions', 'clean_previews' in args and args['clean_previews'] == 'y', self.book_storage_folder)
+        return UpdateAllJson("Update", 'All Volume Definitions',
+                             'clean_previews' in args and args['clean_previews'] == 'y',
+                             'update_tags' in args and args['update_tags'] == 'y',
+                             self.book_storage_folder)
 
 
 class UpdateSingleCache(ActionBookSpecificPlugin):
@@ -97,7 +106,9 @@ class UpdateSingleCache(ActionBookSpecificPlugin):
     def get_action_args(self):
         args = super().get_action_args()
 
-        args.append(plugin_select_arg("Clean Previews", "clean_previews", "n", plugin_select_values('No', 'n', 'Yes', 'y'), "Should the preview images be re-created?", 'bkclnall'))
+        args.append(
+            plugin_select_arg("Clean Previews", "clean_previews", "n", plugin_select_values('No', 'n', 'Yes', 'y'),
+                              "Should the preview images be re-created?", 'bkclnall'))
 
         return args
 
@@ -114,7 +125,7 @@ class UpdateSingleCache(ActionBookSpecificPlugin):
     def create_task(self, db_session: Session, args):
         book_id = args['book_id']
         return UpdateSingleBookStats("Update", f'Update {book_id} Definition', book_id,
-                                'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
+                                     'clean_previews' in args and args['clean_previews'] == 'y', self.book_folder)
 
 
 def custom_chapter_sorting(obj):
@@ -144,7 +155,8 @@ def folder_creation_date(folder_path):
         return None
 
 
-def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWrapper, clean_previews: bool = False):
+def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWrapper, clean_previews: bool = False,
+                           sync_tags: bool = False):
     task_wrapper.always("Building for: " + item_name)
 
     json_data = {'id': item_name, 'chapters': []}
@@ -155,7 +167,11 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
     for root, dirs, files in os.walk(folder_path):
         if root == folder_path:
             previews_path = os.path.join(root, '.previews')
-            os.makedirs(previews_path, exist_ok=True)
+
+            if clean_previews:
+                reset_folder(previews_path)
+            else:
+                os.makedirs(previews_path, exist_ok=True)
 
             prev_chapter = ''
 
@@ -193,24 +209,24 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
                         if task_wrapper.can_trace():
                             task_wrapper.trace(f'Make Thumbnail Image')
 
-                        dest_image_file = os.path.join(previews_path, chapter_dir + '.png')
+                        dest_image_file = os.path.join(previews_path, chapter_dir + '.webp')
                         if clean_previews and os.path.isfile(dest_image_file):
                             os.remove(dest_image_file)
 
                         imgpath = os.path.join(chapter_path, image_file_list[0])
 
-                        if not os.path.isfile(dest_image_file) or  os.path.getmtime(dest_image_file) < os.path.getmtime(imgpath):
+                        if not os.path.isfile(dest_image_file) or os.path.getmtime(dest_image_file) < os.path.getmtime(
+                                imgpath):
                             task_wrapper.set_worked()
 
                             if task_wrapper.can_trace():
                                 task_wrapper.trace(f'New Image {imgpath}')
                             try:
-                                resize_image(imgpath, dest_image_file, 200)
+                                resize_image(imgpath, dest_image_file, 200, "WEBP")
                                 if task_wrapper.can_trace():
                                     task_wrapper.trace(f'Image Created')
                             except Exception as e:
                                 task_wrapper.error("Error making thumbnail file")
-
 
     if json_data['chapters'][0]['name'].startswith("chapter-"):
 
@@ -268,7 +284,7 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
         task_wrapper.trace(f'Before Live Update')
 
     update_book_live(item_name, convert_yyyymmdd_to_date(json_data['date']), json_data['last'], json_data['cover'],
-                     json_data['cover'], task_wrapper, session)
+                     json_data['cover'], logger=task_wrapper, db_session=session, sync_tags=sync_tags)
     if task_wrapper.can_trace():
         task_wrapper.trace('Before manage_book_chapters')
     manage_book_chapters(item_name, json_data['chapters'], task_wrapper, session)
@@ -277,8 +293,7 @@ def generate_db_for_folder(session, item_name, folder_path, task_wrapper: TaskWr
 
 
 def generate_book_definitions(task_wrapper: TaskWrapper, series_id: str = None, book_folder: str = '',
-                              clean_previews: bool = False,
-                              session=None):
+                              clean_previews: bool = False, sync_tags=False, session=None):
     if is_blank(book_folder) or not os.path.isdir(book_folder):
         task_wrapper.add_log("Invalid book folder path.")
         return
@@ -307,7 +322,7 @@ def generate_book_definitions(task_wrapper: TaskWrapper, series_id: str = None, 
         item_path = os.path.join(book_folder, item)
         if os.path.isdir(item_path):
             try:
-                generate_db_for_folder(session, item, item_path, task_wrapper, clean_previews)
+                generate_db_for_folder(session, item, item_path, task_wrapper, clean_previews, sync_tags)
             except Exception as ex:
                 task_wrapper.critical(ex)
 
@@ -317,13 +332,15 @@ class UpdateAllJson(TaskWrapper):
     Update every JSON file
     """
 
-    def __init__(self, name, description, clean_previews: bool, book_folder: str = ''):
+    def __init__(self, name, description, clean_previews: bool, sync_tags: bool = False, book_folder: str = ''):
         super().__init__(name, description)
         self.clean_previews = clean_previews
+        self.sync_tags = sync_tags
         self.book_folder = book_folder
 
     def run(self, db_session):
-        generate_book_definitions(self, None, self.book_folder, self.clean_previews, db_session)
+        generate_book_definitions(self, None, self.book_folder, self.clean_previews, sync_tags=self.sync_tags,
+                                  session=db_session)
 
 
 class UpdateSingleBookStats(TaskWrapper):
@@ -339,4 +356,4 @@ class UpdateSingleBookStats(TaskWrapper):
         self.ref_book_id = series_id
 
     def run(self, db_session):
-        generate_book_definitions(self, self.series_id, self.book_folder, self.clean_previews, db_session)
+        generate_book_definitions(self, self.series_id, self.book_folder, self.clean_previews, session=db_session)

@@ -8,14 +8,15 @@ from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, current_app
 from sqlalchemy.orm import sessionmaker, Session
 
-from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username, get_uid
+from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username, get_uid, \
+    get_user_features
 from common_utils import generate_failure_response, generate_success_response
 from constants import MAX_WORKERS
 from db import db
 from feature_flags import MANAGE_PROCESSES, VIEW_PROCESSES, MANAGE_APP
 from messages import msg_invalid_parameter, msg_tasks_started, msg_action_cancelled_duplicate_task, \
     msg_missing_parameter, msg_action_failed, msg_operation_complete, msg_action_failed_missing, msg_removed_x_items, \
-    msg_found_x_results, msg_access_denied_content_rating
+    msg_found_x_results, msg_access_denied_content_rating, msg_found_x_results_removed_y, msg_auth_feature_required
 from number_utils import is_integer
 from text_utils import is_blank
 from thread_utils import TaskManager, get_exception, TaskWrapper, TaskWorker
@@ -228,14 +229,6 @@ def clean_tasks(user_details):
     return generate_success_response('', messages=[msg_removed_x_items(count)])
 
 
-@process_blueprint.route('/new_worker', methods=['POST'])
-@feature_required(process_blueprint, MANAGE_PROCESSES)
-def new_worker(user_details):
-    app = current_app._get_current_object()  # gets the actual app, not the proxy
-    executor.submit(queue_worker, task_manager, app, generate_worker_id())
-    return generate_success_response('', messages=[msg_removed_x_items(count)])
-
-
 @process_blueprint.route('/sweep', methods=['POST'])
 @feature_required(process_blueprint, MANAGE_PROCESSES)
 def sweep_tasks(user_details):
@@ -274,6 +267,12 @@ def restart_service(user_details):
 @process_blueprint.route('/status/all', methods=['POST'])
 @feature_required(process_blueprint, VIEW_PROCESSES)
 def get_all_task_status(user_detail):
+    get_all_task_status_extra_method(user_detail, '')
+
+
+@process_blueprint.route('/status/all/with/<extra_method_call>', methods=['POST'])
+@feature_required(process_blueprint, VIEW_PROCESSES)
+def get_all_task_status_extra_method(user_detail, extra_method_call):
     global task_manager
 
     removed = task_manager.remove_dead_tasks()
@@ -283,6 +282,19 @@ def get_all_task_status(user_detail):
         with app.app_context():
             for i in range(removed):
                 init_processor(app)
+
+    removed_tasks = 0
+
+    if is_blank(extra_method_call) or extra_method_call == 'NONE':
+        pass
+    else:
+        if get_user_features(user_detail) & MANAGE_PROCESSES != MANAGE_PROCESSES:
+            return generate_failure_response('Not allowed to use this method', 401, msg_auth_feature_required())
+
+        if extra_method_call == 'HARD':
+            removed_tasks = task_manager.clean_tasks(True)
+        elif extra_method_call == 'SOFT':
+            removed_tasks = task_manager.clean_tasks(False)
 
     tasks = task_manager.get_all_tasks()
 
@@ -314,9 +326,15 @@ def get_all_task_status(user_detail):
             "weight": task.weight
         })
 
+    msg = None
+    if removed_tasks == 0:
+        msg = msg_found_x_results(len(tasks))
+    else:
+        msg = msg_found_x_results_removed_y(len(tasks), removed_tasks)
+
     return generate_success_response('', {'tasks': result, 'weight': task_manager.get_weight(),
                                           'workers': task_manager.get_worker_status()},
-                                     messages=[msg_found_x_results(len(tasks))])
+                                     messages=[msg])
 
 
 # REST endpoint to get task status

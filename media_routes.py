@@ -1,12 +1,16 @@
 import logging
+import mimetypes
 import os
 import shutil
+import tempfile
+import uuid
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from PIL import Image
 from flask import Blueprint, request, current_app, make_response, send_from_directory, Response, send_file, \
-    stream_with_context
+    stream_with_context, after_this_request
 from werkzeug.utils import secure_filename
 
 from auth_utils import feature_required, feature_required_with_cookie, get_user_features, get_user_group_id, get_uid
@@ -28,7 +32,7 @@ from messages import msg_file_migrated, msg_access_denied_content_rating, msg_ac
     msg_folder_deleted, msg_folder_moved
 from number_utils import is_integer, is_boolean, parse_boolean
 from short_lived_cache import ShortLivedCache
-from text_utils import clean_string, is_not_blank, is_blank, is_guid
+from text_utils import clean_string, is_not_blank, is_blank, is_guid, safe_filename
 from user_queries import get_all_groups, get_group_by_id
 
 media_blueprint = Blueprint('media', __name__)
@@ -479,7 +483,7 @@ def delete_media_folder(user_details: dict) -> tuple:
 
     if existing_row.preview:
         primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
-        target_file = os.path.join(primary_folder, existing_row.id + '_prev.png')
+        target_file = os.path.join(primary_folder, existing_row.id + '_prev.webp')
         if os.path.exists(target_file) and os.path.isfile(target_file):
             os.unlink(target_file)
 
@@ -563,6 +567,61 @@ def move_media_folder(user_details: dict) -> tuple:
 
     return generate_success_response('Folder Moved', messages=[msg_folder_moved()])
 
+@media_blueprint.route('/folder/activate', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def activate_folder(user_details: dict) -> tuple:
+    # Checkers
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    source_folder_id = clean_string(request.form.get('folder_id'))
+    source_row = find_folder_by_id(source_folder_id)
+
+    if source_row is None:
+        return generate_failure_response('Could not find requested folder', messages=[msg_action_cancelled_wrong()])
+
+    if not folder_rating_checks(source_row):
+        return generate_failure_response('User is not allowed to activate a folder in a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
+
+    if not folder_group_checks(source_row):
+        return generate_failure_response(
+            'User is not allowed to activate a folder in a folder with a different security group',
+            messages=[msg_access_denied_content_rating()])
+
+    source_row.active = True
+
+    db.session.commit()
+
+    return generate_success_response('Folder Activated', messages=[msg_folder_updated()])
+
+@media_blueprint.route('/folder/inactivate', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def inactivate_folder(user_details: dict) -> tuple:
+    # Checkers
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    source_folder_id = clean_string(request.form.get('folder_id'))
+    source_row = find_folder_by_id(source_folder_id)
+
+    if source_row is None:
+        return generate_failure_response('Could not find requested folder', messages=[msg_action_cancelled_wrong()])
+
+    if not folder_rating_checks(source_row):
+        return generate_failure_response('User is not allowed to inactivate a folder in a folder with a higher rating limit',
+                                         messages=[msg_access_denied_content_rating()])
+
+    if not folder_group_checks(source_row):
+        return generate_failure_response(
+            'User is not allowed to inactivate a folder in a folder with a different security group',
+            messages=[msg_access_denied_content_rating()])
+
+    source_row.active = False
+
+    db.session.commit()
+
+    return generate_success_response('Folder Inactivated', messages=[msg_folder_updated()])
 
 # File Management
 
@@ -777,7 +836,7 @@ def delete_media_file(user_details: dict) -> tuple:
     archive_folder = current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER]
 
     if file_row.preview:
-        preview_file_name = os.path.join(primary_folder, file_row.id + '_prev.png')
+        preview_file_name = os.path.join(primary_folder, file_row.id + '_prev.webp')
         if os.path.exists(preview_file_name) and os.path.isfile(preview_file_name):
             os.unlink(preview_file_name)
         else:
@@ -937,7 +996,7 @@ def upload_media_preview(user_details):
 
     primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
 
-    target_file = os.path.join(primary_folder, folder_id + '_prev.png')
+    target_file = os.path.join(primary_folder, folder_id + '_prev.webp')
 
     try:
         image = Image.open(image_file)
@@ -964,7 +1023,7 @@ def serve_media_thumbnail(user_details, folder_id):
     primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
 
     # Construct the file path
-    target_file = os.path.join(primary_folder, folder_id + '_prev.png')
+    target_file = os.path.join(primary_folder, folder_id + '_prev.webp')
 
     # Check if the file exists
     if os.path.exists(target_file) and os.path.isfile(target_file):
@@ -1059,6 +1118,95 @@ def download_media_file(user_details, file_id):
     return response
 
 
+@media_blueprint.route('/download_batch/<file_ids>', methods=['GET', 'POST'])
+@feature_required_with_cookie(media_blueprint, VIEW_MEDIA)
+def download_multiple_files(user_details, file_ids):
+    """
+    Download multiple files as a zip archive with no compression.
+    """
+    if not current_app.config[PROPERTY_SERVER_MEDIA_READY]:
+        return generate_failure_response(
+            'This feature is not ready. Please configure the app properties and restart the server.')
+
+    file_ids_param = clean_string(file_ids)
+    file_ids = [clean_string(fid) for fid in file_ids_param.split(',') if is_guid(fid)]
+
+    if not file_ids:
+        return generate_failure_response('No valid file IDs provided.', 400)
+
+    folder_group_checks = get_folder_group_checker(user_details)
+    folder_rating_checks = get_folder_rating_checker(user_details)
+
+    unique_filenames = {}
+    files_to_zip = []
+
+    result_file_name = ''
+
+    for file_id in file_ids:
+        file = find_file_by_id(file_id)
+        if not file:
+            continue
+
+        folder = file.mediafolder
+        if not folder or not folder_group_checks(folder) or not folder_rating_checks(folder):
+            continue
+
+        if result_file_name == '':
+            result_file_name = safe_filename(folder.name) + '.zip'
+
+        target_folder = current_app.config[
+            PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER if file.archive else PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER
+        ]
+        file_path = os.path.join(target_folder, file_id + '.dat')
+        if not os.path.isfile(file_path):
+            continue
+
+        mimetype = file.mime_type
+        base_name = file.filename or file_id
+        name, ext = os.path.splitext(base_name)
+
+        count = 1
+
+        if is_blank(ext):
+            ext = mimetypes.guess_extension(mimetype)
+
+        final_name = f"{base_name}{ext}"
+
+        # Ensure filename is unique within zip
+        while final_name in unique_filenames:
+            final_name = f"{name}_{count}{ext}"
+            count += 1
+
+        unique_filenames[final_name] = True
+        files_to_zip.append((file_path, final_name))
+
+    if not files_to_zip:
+        return generate_failure_response('No valid files found for download.', 404)
+
+    temp_dir = tempfile.gettempdir()
+    zip_filename = f"{uuid.uuid4()}.zip"
+    zip_path = os.path.join(temp_dir, zip_filename)
+
+    with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_STORED) as zipf:
+        for file_path, arc_name in files_to_zip:
+            zipf.write(file_path, arcname=arc_name)
+
+    @after_this_request
+    def remove_file(response):
+        try:
+            os.remove(zip_path)
+        except Exception:
+            current_app.logger.exception("Failed to remove temporary zip file")
+        return response
+
+    return send_file(
+        zip_path,
+        as_attachment=True,
+        download_name=result_file_name,
+        mimetype='application/zip'
+    )
+
+
 @media_blueprint.route('/view', methods=['GET'])
 @feature_required_with_cookie(media_blueprint, VIEW_MEDIA)
 def view_media_file(user_details):
@@ -1116,8 +1264,15 @@ def view_media_file(user_details):
         "style-src 'self'; "  # Allow styles only from the current domain
         "img-src 'self'; "  # Images only from the current domain
     )
+
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Range"
+    response.headers["Accept-Ranges"] = "bytes"
+
     response.headers['Content-Security-Policy'] = strict_csp
     response.headers['Content-Type'] = mimetype
+    response.headers['Cross-Origin-Resource-Policy'] = 'cross-origin'
 
     return response
 
@@ -1185,7 +1340,20 @@ def stream_media_file(user_details):
             return generate_failure_response('Invalid range', 416)  # Range Not Satisfiable
 
     # Stream the entire file if no range is provided
-    return send_file(target_path, mimetype=mimetype)
+    response = send_file(target_path, mimetype=mimetype)
+
+    origin = request.headers.get("Origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    else:
+        # fallback if no Origin header was sent (like curl/wget)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Range, Authorization"
+
+    return response
 
 
 @media_blueprint.route('/request-unsafe-stream', methods=['POST'])
@@ -1199,7 +1367,11 @@ def request_unsafe_stream_media_file(user_details):
         return generate_failure_response(
             'This feature is not ready.  Please configure the app properties and restart the server.')
 
-    file_id = clean_string(request.args.get('file_id'))
+    # Check post first
+    file_id = clean_string(request.form.get('file_id'))
+    if not file_id:
+        # Fallabck to query
+        file_id = clean_string(request.args.get('file_id'))
 
     # Checkers
     folder_group_checks = get_folder_group_checker(user_details)
@@ -1285,7 +1457,20 @@ def unsafe_stream_media_file():
             return generate_failure_response('Invalid range', 416)  # Range Not Satisfiable
 
     # Stream the entire file if no range is provided
-    return send_file(target_path, mimetype=mimetype)
+    response = send_file(target_path, mimetype=mimetype)
+
+    origin = request.headers.get("Origin")
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+    else:
+        # fallback if no Origin header was sent (like curl/wget)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+
+    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Range"
+
+    return response
 
 
 # Node Logic

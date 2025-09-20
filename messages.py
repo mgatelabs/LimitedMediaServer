@@ -102,6 +102,9 @@ def msg_folder_updated() -> tuple[str, dict[str, str]]:
 def msg_found_x_results(count) -> tuple[str, dict[str, str]]:
     return 'msgs.found_x_results', {"count": count}
 
+def msg_found_x_results_removed_y(count, removed) -> tuple[str, dict[str, str]]:
+    return 'msgs.found_x_results_removed_y', {"count": count, "removed": removed}
+
 def msg_info_archiving_file(fileName, index, total) -> tuple[str, dict[str, str]]:
     return 'msgs.info_archiving_file', {"fileName": fileName, "index": index, "total": total}
 

@@ -365,6 +365,40 @@ def extract_webp_strings(input_text):
 
     return result
 
+def extract_jpg_strings(input_text):
+    import re
+
+    # Find all matches of `.jpeg"` in the string
+    matches = [match.start() for match in re.finditer(r'\.jpg"', input_text)]
+    result = []
+
+    for match in matches:
+        # Look backwards from the `.webp"` match to find the preceding `"`
+        start_idx = input_text.rfind('"', 0, match)
+        if start_idx != -1:  # Ensure a starting `"` was found
+            # Extract the substring between the `"` and `.jpeg"`
+            extracted_string = input_text[start_idx + 1:match + 4]
+            result.append(extracted_string)
+
+    return result
+
+def extract_png_strings(input_text):
+    import re
+
+    # Find all matches of `.jpeg"` in the string
+    matches = [match.start() for match in re.finditer(r'\.png"', input_text)]
+    result = []
+
+    for match in matches:
+        # Look backwards from the `.webp"` match to find the preceding `"`
+        start_idx = input_text.rfind('"', 0, match)
+        if start_idx != -1:  # Ensure a starting `"` was found
+            # Extract the substring between the `"` and `.jpeg"`
+            extracted_string = input_text[start_idx + 1:match + 4]
+            result.append(extracted_string)
+
+    return result
+
 def extract_jpeg_strings(input_text):
     import re
 
@@ -381,3 +415,33 @@ def extract_jpeg_strings(input_text):
             result.append(extracted_string)
 
     return result
+
+
+def wildcard_to_regex(pattern):
+    # Flag for leading/trailing asterisks
+    starts_with_star = pattern.startswith('*')
+    ends_with_star = pattern.endswith('*')
+
+    # Split on '*' and escape parts
+    parts = pattern.split('*')
+    escaped_parts = [re.escape(part) for part in parts if part]
+
+    # Join with '.*'
+    regex_pattern = '.*'.join(escaped_parts)
+
+    # Add '.*' to beginning/end if original had leading/trailing '*'
+    if starts_with_star:
+        regex_pattern = '.*' + regex_pattern
+    if ends_with_star:
+        regex_pattern = regex_pattern + '.*'
+
+    return '^' + regex_pattern + '$'  # Full string match
+
+def safe_filename(title: str) -> str:
+    # Replace all non-alphanumeric characters with underscores
+    filename = re.sub(r'[^A-Za-z0-9]+', '_', title)
+    # Collapse multiple underscores into one
+    filename = re.sub(r'_+', '_', filename)
+    # Strip leading and trailing underscores
+    filename = filename.strip('_')
+    return filename

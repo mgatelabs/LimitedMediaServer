@@ -49,18 +49,16 @@ class DownloadM3u8Plugin(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_url_arg('URL', 'url', 'The link to the m3u8 file.')
+            plugin_select_arg('Location', 'dest', 'primary',
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media')
         )
 
         result.append(
             plugin_filename_arg('Filename', 'filename', 'The name of the file.')
         )
 
-        #result.append(plugin_select_arg('Send Headers', 'headers', 'n', PLUGIN_VALUES_Y_N, 'Send headers with command?'))
-
         result.append(
-            plugin_select_arg('Location', 'dest', 'primary',
-                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media')
+            plugin_url_arg('URL', 'url', 'The link to the m3u8 file.', "", "yes", "url")
         )
 
         return result

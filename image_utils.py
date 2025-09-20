@@ -6,7 +6,7 @@ from PIL import Image
 from thread_utils import TaskWrapper
 
 
-def resize_image(input_path, output_path, target_width):
+def resize_image(input_path, output_path, target_width, file_format='PNG'):
     """
     Resize an image to a target width while maintaining aspect ratio.
     If the image is tall (height > 2 * width), it will be cropped to a square.
@@ -52,7 +52,7 @@ def resize_image(input_path, output_path, target_width):
         resized_image = image.resize((target_width, height_size), Image.LANCZOS)
 
     # Save the resized image as PNG
-    resized_image.save(output_path, format='PNG')
+    resized_image.save(output_path, format=file_format)
 
 
 def crop_and_resize(input_path, output_path, size, side=False):
@@ -171,8 +171,8 @@ def clean_images_folder(folder_path, logger: TaskWrapper):
         if file.is_file():
             try:
                 # Check the size of the file (in bytes)
-                if file.stat().st_size < 20 * 1024:
-                    logger.debug(f"Deleting {file.name} (file size is less than 20KB)")
+                if file.stat().st_size < 10 * 1024:
+                    logger.debug(f"Deleting {file.name} (file size is less than 10KB)")
                     file.unlink()  # Remove file
                 else:
                     # Open the image to check its format

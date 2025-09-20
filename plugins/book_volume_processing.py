@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Optional
 
 from flask_sqlalchemy.session import Session
@@ -9,7 +10,7 @@ from html_utils import download_unsecure_file, download_secure_file, get_headers
 from image_utils import clean_images_folder, is_valid_image
 from plugins.book_update_stats import generate_db_for_folder
 from processors.processor_core import CustomDownloadInterface
-from text_utils import is_not_blank
+from text_utils import is_not_blank, wildcard_to_regex
 from thread_utils import TaskWrapper
 from utility import random_sleep
 
@@ -48,7 +49,7 @@ def _process_file_download(headers_required: bool, task_wrapper: TaskWrapper, im
             random_sleep(20, 15, task_wrapper)
 
         try_count = try_count + 1
-        if try_count > 5:
+        if try_count > 2:
             task_wrapper.set_failure()
             task_wrapper.error("Too many failed attempts, failing")
             return "X"
@@ -67,8 +68,15 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
         site_url = book.extra_url
 
     skipList = []
+    regex_list = []
     if is_not_blank(book.skip):
         skipList = [value.strip() for value in book.skip.split(',')]
+        for skip_item in skipList:
+            if "*" in skip_item:
+                skip_regex = wildcard_to_regex(skip_item)
+                if task_wrapper.can_trace():
+                    task_wrapper.trace(f'Regex: {skip_regex}')
+                regex_list.append(skip_regex)
 
     if headers_required:
 
@@ -124,6 +132,19 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
             if task_wrapper.can_trace():
                 task_wrapper.trace(f'Skipped Chapter: {chapter_id}')
             continue
+        elif len(regex_list) > 0:
+            should_skip = False
+            for skip_regex in regex_list:
+                compiled = re.compile(skip_regex)
+                result = compiled.match(chapter_id)
+                if result:
+                    skipped_chapters = skipped_chapters + 1
+                    should_skip = True
+                    if task_wrapper.can_trace():
+                        task_wrapper.trace(f'Skipped Chapter: {chapter_id}')
+                    break
+            if should_skip:
+                continue
 
         destination_folder = os.path.join(book_folder, book_id, chapter_id)
 
@@ -147,7 +168,7 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
             task_wrapper.error(f'Chapter: {chapter["chapter"]} - Processor did not return images')
             return False
 
-        task_wrapper.info(f'Chapter: {chapter["chapter"]} ({len(image_list)} images)' )
+        task_wrapper.info(f'Chapter: {chapter["chapter"]} ({len(image_list)} images)')
 
         downloaded_chapters = downloaded_chapters + 1
 
@@ -188,8 +209,9 @@ def _process_download(processor, token, book: Book, task_wrapper, book_folder: s
 
             resu = _process_file_download(headers_required, task_wrapper, image_info, destination_folder, headers)
             if resu == 'X':
-                stop_download = True
-                break
+                task_wrapper.error('Failed to download image, skipping item')
+                #stop_download = True
+                #break
             elif resu == 'E':
                 break
 

@@ -546,7 +546,7 @@ def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper 
                 file_size = os.path.getsize(output_file)
                 tw.trace(f'Generated Image Size: {file_size}')
 
-            resize_image(output_file, output_file, 256)
+            resize_image(output_file, output_file, 256, 'WEBP')
 
         except ValueError as ve:
             tw.error(str(ve))
@@ -576,7 +576,7 @@ def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper 
                 try:
                     cover_art = Image.open(io.BytesIO(image.image_data))
                     cover_art.thumbnail((256, 256))
-                    cover_art.save(output_file)
+                    cover_art.save(output_file, "WEBP")
 
                     if tw is not None:
                         tw.set_worked()
@@ -590,7 +590,7 @@ def generate_thumbnail(mime_type: str, input_file, output_file, tw: TaskWrapper 
         except Exception as inst2:
             logging.exception(inst2)
     elif mime_type == 'image/png' or mime_type == 'image/jpg' or mime_type == 'image/jpeg' or mime_type == 'image/gif':  # MP3 file
-        resize_image(input_file, output_file, 128)
+        resize_image(input_file, output_file, 128, "WEBP")
         return True
     else:
         if tw is not None:

@@ -1,6 +1,6 @@
+import logging
 from datetime import date, datetime
 from typing import Optional, List, Tuple
-import logging
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy import desc, func, or_
@@ -8,7 +8,7 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.orm import aliased
 
 from date_utils import convert_yyyymmdd_to_date
-from db import Book, Chapter, VolumeProgress, VolumeBookmark, db
+from db import Book, Chapter, VolumeProgress, VolumeBookmark, db, Tag
 from text_utils import is_not_blank
 from thread_utils import TaskWrapper
 
@@ -124,6 +124,15 @@ def remove_volume_bookmark(session: Session, user_id: int, row_id: int) -> bool:
     return False
 
 
+def find_tags() -> Optional[List[Tag]]:
+    """
+    Function to find all tags
+    :return:
+    """
+
+    return Tag.query.order_by(Tag.name).all()
+
+
 def find_chapters_by_book(book_id: str, uid: int) -> Optional[List[tuple[Chapter, VolumeProgress]]]:
     """
     Function to find all chapters of a book by the book's ID
@@ -173,7 +182,7 @@ def find_chapter_by_sequence(book_id: str, sequence: int) -> Optional[Chapter]:
 
 
 def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Optional[int] = None,
-                       db_session: Session = db.session):
+                       tags: list[str] = [], db_session: Session = db.session):
     """
     Used to share book search functionality
     :param max_rating:
@@ -213,15 +222,25 @@ def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Op
             )
         )
 
+    if tags:
+        # Normalize tags to uppercase (to match how we store them)
+        tags_normalized = [t.strip().upper() for t in tags if t.strip()]
+        if tags_normalized:
+            # Join Tag table
+            query = query.join(Book.tags_rel).filter(Tag.name.in_(tags_normalized))
+            # Ensure all tags are matched (books must have all requested tags)
+            query = query.group_by(Book.id).having(func.count(Tag.id) == len(tags_normalized))
+
     return query
 
 
-def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_text: str = None,
+def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_text: str = None, tags: list[str] = [],
                                      db_session: Session = db.session):
     """
     Used to share book search functionality
     :param max_rating:
     :param filter_text:
+    :param tags: optional list of tag names to filter by (all must match)
     :return:
     """
 
@@ -262,16 +281,26 @@ def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_t
             )
         )
 
+    if tags:
+        # Normalize tags to uppercase (to match how we store them)
+        tags_normalized = [t.strip().upper() for t in tags if t.strip()]
+        if tags_normalized:
+            # Join Tag table
+            query = query.join(Book.tags_rel).filter(Tag.name.in_(tags_normalized))
+            # Ensure all tags are matched (books must have all requested tags)
+            query = query.group_by(Book.id).having(func.count(Tag.id) == len(tags_normalized))
+
     return query
 
 
 # Function to list books with a rating less than or equal to max_rating
-def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None, sort_field=None,
-                          sort_descending: bool = False,
-                          query_offset: int = 0, query_limit: int = 0,
+def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None, filter_tags: list[str] = [],
+                          sort_field=None,
+                          sort_descending: bool = False, query_offset: int = 0, query_limit: int = 0,
                           db_session: Session = db.session) -> List[tuple[Book, VolumeProgress]]:
     """
     List the books that a user has access to based upon their criteria and the search window
+    :param filter_tags:
     :param max_rating:
     :param filter_text: If not blank, the book title must have this text
     :param sort_field: The field to sort against
@@ -282,7 +311,7 @@ def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None
     :param db_session:
     :return:
     """
-    query = _build_books_with_progress_query(user_id, max_rating, filter_text, db_session)
+    query = _build_books_with_progress_query(user_id, max_rating, filter_text, tags=filter_tags, db_session=db_session)
 
     if sort_descending:
         query = query.order_by(sort_field.desc(), Book.id.desc())
@@ -299,14 +328,14 @@ def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None
 
 
 # Function to count the books with a rating less than or equal to max_rating
-def count_books_for_rating(max_rating: int, filter_text: str = None) -> int:
+def count_books_for_rating(max_rating: int, filter_text: str = None, filter_tags: list[str] = []) -> int:
     """
     This is the result count for list_books_for_rating
     :param max_rating:
     :param filter_text:
     :return:
     """
-    return _build_books_query(max_rating, filter_text).count()
+    return _build_books_query(max_rating, filter_text, tags=filter_tags).count()
 
 
 # Function to insert or update a book record
@@ -372,6 +401,10 @@ def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url:
             book.start_chapter = start_chapter_id
             updated = True
         if updated:
+
+            tag_list = [t.strip() for t in (book.tags or "").split(",") if t.strip()]
+            sync_book_tags(book, tag_list, db_session)
+
             # Commit the updates
             db_session.commit()
             if logger is not None:
@@ -406,9 +439,11 @@ def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url:
 
 # Function to update live book details
 def update_book_live(book_id: str, last_date: date, last_chapter: str, cover: str, first_chapter: str,
+                     sync_tags: bool = False,
                      logger: TaskWrapper = None, db_session: Session = db.session):
     """
     This is explicitly an update request for a book
+    :param sync_tags:
     :param book_id:
     :param last_date:
     :param last_chapter:
@@ -441,8 +476,12 @@ def update_book_live(book_id: str, last_date: date, last_chapter: str, cover: st
             book.first_chapter = first_chapter
             updated = True
 
-        if updated:
+        if updated or sync_tags:
             # Commit the updates
+
+            tag_list = [t.strip().upper() for t in (book.tags or "").split(",") if t.strip()]
+            sync_book_tags(book, tag_list, db_session)
+
             db_session.commit()
             if logger is not None:
                 logger.info(f"Updated book with ID {book_id}")
@@ -567,6 +606,13 @@ def manage_book_chapters(book_id: str, chapters, logger: TaskWrapper = None, db_
 
 # Function to manage book chapters
 def manage_remove_book(book: Book, logger: TaskWrapper = None, db_session: Session = db.session) -> bool:
+    """
+    Remove a book
+    :param book:
+    :param logger:
+    :param db_session:
+    :return:
+    """
     try:
         if logger is not None and logger.can_trace():
             logger.trace(f"Removing book {book.id}")
@@ -579,3 +625,67 @@ def manage_remove_book(book: Book, logger: TaskWrapper = None, db_session: Sessi
         if logger is not None:
             logger.info(str(ex))
     return False
+
+
+def sync_book_tags(book: "Book", tag_names: list[str], session, auto_commit=False):
+    """
+    Synchronize a book's tags with the given list of tag names.
+    - Converts all tags to uppercase
+    - Creates new Tag objects if they don't exist.
+    - Adds missing tags to the book.
+    - Removes tags not in the list.
+    :return:
+    :param auto_commit: Auto commit changes?
+    :param book: The book to update
+    :param tag_names: List of tags
+    :param session: The Database session
+    """
+
+    # Normalize: strip whitespace + lowercase (optional)
+    normalized_names = [t.strip().upper() for t in tag_names if t.strip()]
+    normalized_names = list(set(normalized_names))  # remove duplicates
+
+    if not normalized_names:
+        # If no tags passed in, remove all tags
+        for tag in book.tags_rel.all():
+            book.tags_rel.remove(tag)
+        if auto_commit:
+            session.commit()
+        return []
+
+    # Fetch existing Tag objects for these names (normalized)
+    existing_tags = {
+        t.name: t
+        for t in session.query(Tag).filter(Tag.name.in_(normalized_names)).all()
+    }
+
+    altered = False
+
+    # Create Tag objects for names that don't exist yet
+    for name in normalized_names:
+        if name not in existing_tags:
+            tag = Tag(name=name)
+            altered = True
+            session.add(tag)
+            existing_tags[name] = tag
+
+    # Current tags on the book
+    current_tags = {t.name: t for t in book.tags_rel}
+
+    # Add missing tags
+    for name, tag in existing_tags.items():
+        if name not in current_tags:
+            altered = True
+            book.tags_rel.append(tag)
+
+    # Remove tags not in the new list
+    for name, tag in current_tags.items():
+        if name not in normalized_names:
+            altered = True
+            book.tags_rel.remove(tag)
+
+    if altered and auto_commit:
+        session.commit()
+
+    # Return final list of tag names (uppercased)
+    return [t.name for t in book.tags_rel]

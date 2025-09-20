@@ -168,3 +168,12 @@ def is_text_file(file_path, num_bytes=64):
         return True  # Successfully decoded as UTF-8, so it's text
     except (UnicodeDecodeError, FileNotFoundError):
         return False
+
+
+def reset_folder(folder_path):
+    # Remove the folder and its contents if it exists
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+
+    # Recreate the empty folder
+    os.makedirs(folder_path, exist_ok=True)

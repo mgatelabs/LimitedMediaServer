@@ -1,5 +1,6 @@
 import argparse
 import os.path
+import platform
 import re
 import shlex
 import shutil
@@ -7,7 +8,6 @@ import subprocess
 from datetime import datetime
 from time import sleep
 from urllib.parse import urljoin
-import platform
 
 from flask_sqlalchemy.session import Session
 
@@ -54,23 +54,23 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_url_arg('URL', 'url', 'The link to the m3u8 file.')
+            plugin_select_arg('Location', 'dest', 'primary',
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media')
         )
 
         result.append(
-            plugin_url_arg('Origin', 'origin', 'The origin for the Url.')
+            plugin_url_arg('Origin', 'origin', 'The origin for the Url.', '', 'no', "Origin")
         )
 
         result.append(
             plugin_filename_arg('Filename', 'filename', 'The name of the file.')
         )
 
-        # result.append(plugin_select_arg('Send Headers', 'headers', 'n', PLUGIN_VALUES_Y_N, 'Send headers with command?'))
-
         result.append(
-            plugin_select_arg('Location', 'dest', 'primary',
-                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media')
+            plugin_url_arg('URL', 'url', 'The link to the m3u8 file.', '', 'yes', "url")
         )
+
+
 
         return result
 
@@ -114,11 +114,13 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
                                  args['dest'], self.primary_path,
                                  self.archive_path, self.temp_path)
 
+
 def file_to_hex_string(filepath):
     with open(filepath, "rb") as f:
         data = f.read()
     hex_string = data.hex()
     return hex_string
+
 
 class DownloadM3u8JobEx(TaskWrapper):
     def __init__(self, name, description, folder_id, filename, url, origin, dest, primary_path, archive_path,
@@ -205,17 +207,17 @@ class DownloadM3u8JobEx(TaskWrapper):
 
                     self.debug(f'{method_match}, {uri_match}, {iv_match}')
 
-                    if method_match: # and method_match.group(1) == "AES-128":
+                    if method_match:  # and method_match.group(1) == "AES-128":
                         key_url = urljoin(base_url, uri_match.group(1))
-                        #iv_hex = iv_match.group(1) if iv_match else None
+                        # iv_hex = iv_match.group(1) if iv_match else None
 
                         if not custom_curl_get(key_url, headers, temp_key, self):
                             self.error("Failed to download encryption key.")
                             self.set_failure()
                             return None
 
-                        #key_data = file_to_hex_string(temp_key)
-                        #has_key = True
+                        # key_data = file_to_hex_string(temp_key)
+                        # has_key = True
 
                         self.debug(f"Decryption key fetched from: {key_url}")
 
@@ -223,23 +225,22 @@ class DownloadM3u8JobEx(TaskWrapper):
 
                     i += 1
                 elif line.startswith("#EXTINF:"):
-                    #duration = float(line.split(":")[1].split(",")[0])
-                    made_lines.append(line)
+                    # duration = float(line.split(":")[1].split(",")[0])
+
                     segment_path = lines[i + 1].strip()
                     segment_url = urljoin(base_url, segment_path)
                     segment_name = f'seg_{i}.mp4'
                     segment_file = os.path.join(temp_folder, segment_name)
 
-                    # Download segment if not present
-                    if not os.path.exists(segment_file):
-                        self.debug(f"Downloading segment: {segment_url}")
+                    self.debug(f"Downloading segment: {segment_url}")
 
-                        if not custom_curl_get(segment_url, headers, segment_file, self):
-                            self.error("Failed to download m3u8 segment.")
-                            self.set_failure()
-                            return None
+                    if not custom_curl_get(segment_url, headers, segment_file, self):
+                        self.warn(f"Failed to download m3u8 segment {segment_name}.")
+                        self.set_warning()
+                    else:
+                        made_lines.append(line)
+                        made_lines.append(segment_name)
 
-                    made_lines.append(segment_name)
                     i += 2
                 else:
                     made_lines.append(line)
@@ -249,8 +250,8 @@ class DownloadM3u8JobEx(TaskWrapper):
                 for line in made_lines:
                     f.write(line + "\n")
 
-
-            arguments = ['ffmpeg', '-allowed_extensions', 'ALL', '-nostdin', '-i', made_m3u8_file, '-c', 'copy', temp_file]
+            arguments = ['ffmpeg', '-allowed_extensions', 'ALL', '-nostdin', '-i', made_m3u8_file, '-c', 'copy',
+                         temp_file]
 
             if self.can_trace():
                 command_str = shlex.join(arguments)
