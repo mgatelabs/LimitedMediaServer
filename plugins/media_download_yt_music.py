@@ -1,9 +1,7 @@
 import argparse
 import mimetypes
 import os.path
-import shutil
 import subprocess
-from datetime import datetime
 
 import eyed3
 from flask_sqlalchemy.session import Session
@@ -11,11 +9,11 @@ from flask_sqlalchemy.session import Session
 from feature_flags import MANAGE_MEDIA
 from file_utils import temporary_folder
 from image_utils import crop_and_resize
-from media_queries import find_folder_by_id, insert_file
-from media_utils import get_data_for_mediafile, ingest_file
+from media_queries import find_folder_by_id
+from media_utils import ingest_file
 from number_utils import parse_boolean
+from plugin_methods import plugin_select_arg, plugin_select_values, plugin_url_arg
 from plugin_system import ActionMediaFolderPlugin
-from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values
 from text_utils import is_blank, common_prefix_postfix, extract_yt_code, remove_prefix_and_postfix, \
     remove_start_digits_pattern
 from thread_utils import TaskWrapper
@@ -51,7 +49,7 @@ class DownloadMusicFromYtTask(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_string_arg('URL', 'url', 'Link to the video, playlist, page')
+            plugin_url_arg('URL', 'url', 'Link to the video, playlist, page', clear_after='yes')
         )
 
         result.append(
@@ -95,7 +93,8 @@ class DownloadMusicFromYtTask(ActionMediaFolderPlugin):
         return MANAGE_MEDIA
 
     def create_task(self, db_session: Session, args):
-        return DownloadYtMusic("DL YT Music", 'Downloading music from YT ' + args['url'], args['folder_id'], args['url'],
+        return DownloadYtMusic("DL YT Music", 'Downloading music from YT ' + args['url'], args['folder_id'],
+                               args['url'],
                                parse_boolean(args['split_chapters']),
                                args['dest'],
                                self.primary_path,
@@ -236,21 +235,22 @@ class DownloadYtMusic(TaskWrapper):
                                 modified_name = str(item)
 
                                 if self.split_chapters and front_prefix is not None and end_postfix is not None:
-                                    #self.debug('BE')
+                                    # self.debug('BE')
                                     video_value = extract_yt_code(modified_name)
-                                    #self.debug('A:' + modified_name)
+                                    # self.debug('A:' + modified_name)
                                     modified_name = remove_prefix_and_postfix(modified_name, front_prefix,
                                                                               end_postfix)
-                                    #self.debug('B:' + modified_name)
+                                    # self.debug('B:' + modified_name)
                                     # Skip the non-chapter files
                                     if modified_name == '[' + video_value + '].mp3':
-                                        continue # Skip this file
+                                        continue  # Skip this file
                                     modified_name = remove_start_digits_pattern(
                                         modified_name + '[' + video_value + '].mp3')
 
                                 replace_album_art_d3(item_full_path, album_file, icon_file, self)
 
-                                if ingest_file(item_full_path, modified_name, source_row.id, is_archive, self.primary_path,
+                                if ingest_file(item_full_path, modified_name, source_row.id, is_archive,
+                                               self.primary_path,
                                                self.archive_path, db_session, self):
                                     if self.can_debug():
                                         self.debug(f'Ingested: {item}')

@@ -6,7 +6,7 @@ from app_properties import AppPropertyDefinition
 from constants import PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, \
     PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_SECRET_KEY, PROPERTY_SERVER_HOST_KEY, \
     PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_VOLUME_FOLDER, \
-    PROPERTY_SERVER_VOLUME_FORMAT
+    PROPERTY_SERVER_VOLUME_FORMAT, PROPERTY_SERVER_MEDIA_ENCODER_HOST
 from db import AppProperties, User, UserLimit, db, UserHardSession
 from text_utils import is_not_blank
 
@@ -114,6 +114,36 @@ def get_media_temp_folder() -> str:
     if is_not_blank(value):
         return value
     return ""
+
+
+def get_media_encoder_host() -> str:
+    """
+    Get the host for the external encoder
+    """
+    value = _get_attr_value(PROPERTY_SERVER_MEDIA_ENCODER_HOST)
+    if is_not_blank(value):
+        return value
+    return ""
+
+def get_media_encoder_port(override_value: int = 8080) -> int:
+    """
+    Get the server port number from the database.
+    """
+    try:
+        # See if a valid override was passed in
+        if 0 < override_value < 65535:
+            return override_value
+
+        value = _get_attr_value(PROPERTY_SERVER_PORT_KEY)
+        if is_not_blank(value):
+            v = int(value)
+            if 0 < v < 65535:
+                return v
+    except ValueError:
+        pass
+    # Fallback to default
+
+    return 8080
 
 
 def get_volume_folder() -> str:

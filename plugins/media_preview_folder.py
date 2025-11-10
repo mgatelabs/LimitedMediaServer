@@ -410,7 +410,7 @@ class MakeMediaPreviewJob(TaskWrapper):
         self.all_folders = all_folders
         self.force = force
         self.media_position = media_position
-        self.weight = 50
+        self.weight = 25
         if folder_id != '*':
             self.ref_folder_id = folder_id
 
@@ -434,13 +434,16 @@ class MakeMediaPreviewJob(TaskWrapper):
                     if self.multiple_file:
                         file_list = self.file_id.split(",")
                         for file in file_list:
-                            get_file_by_user(file, self.user, db_session)
+                            media_file, media_folder = get_file_by_user(file, self.user, db_session)
+                            self.ref_folder_id = media_folder.id
                     else:
-                        get_file_by_user(self.file_id, self.user, db_session)
+                        media_file, media_folder = get_file_by_user(self.file_id, self.user, db_session)
+                        self.ref_folder_id = media_folder.id
                 else:
                     # Make sure we have access
                     self.trace('Checking for User access to Folder')
                     existing_row = get_folder_by_user(self.folder_id, self.user, db_session)
+                    self.ref_folder_id = self.folder_id
             except ValueError as ve:
                 logging.exception(ve)
                 self.error(str(ve))

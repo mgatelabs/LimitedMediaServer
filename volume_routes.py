@@ -1,10 +1,11 @@
+import io
 import logging
 import os
 import shutil
 from datetime import datetime, timedelta, timezone
 
 from PIL import Image
-from flask import Blueprint, send_from_directory, current_app, request, make_response, abort
+from flask import Blueprint, send_from_directory, current_app, request, make_response, abort, send_file
 from werkzeug.utils import secure_filename
 
 from auth_utils import shall_authenticate_user, feature_required, feature_required_with_cookie, get_uid
@@ -199,7 +200,6 @@ def get_chapters(user_details: dict) -> tuple:
 @volume_blueprint.route('/list/tags', methods=['POST'])
 @feature_required(volume_blueprint, VIEW_BOOKS)
 def get_tags(user_details: dict) -> tuple:
-
     if not current_app.config[PROPERTY_SERVER_VOLUME_READY]:
         return generate_failure_response('Volume service not ready', 400, messages=[msg_server_error()])
 
@@ -208,6 +208,7 @@ def get_tags(user_details: dict) -> tuple:
         tags.append(tag.name)
 
     return generate_success_response('', {'tags': tags})
+
 
 @volume_blueprint.route('/list/images', methods=['POST'])
 @feature_required(volume_blueprint, VIEW_BOOKS)
@@ -480,6 +481,52 @@ def split_image(user_details):
         return generate_failure_response('Image not found', messages=[msg_action_failed()])
 
 
+@volume_blueprint.route('/remove/chapter', methods=['POST'])
+@feature_required(volume_blueprint, MANAGE_VOLUME)
+def remove_chapter(user_details):
+    max_rating = get_volume_max_rating(user_details)
+    book_id = clean_string(request.form.get('book_id'))
+    chapter_id = clean_string(request.form.get('chapter_id'))
+
+    book_row = find_book_by_id(book_id)
+
+    if book_row is None:
+        return generate_failure_response('Could not find book', messages=[msg_action_cancelled_wrong()])
+
+    if book_row.rating > max_rating:
+        return generate_failure_response('You are not allowed to view this book',
+                                         messages=[msg_access_denied_content_rating()])
+
+    chapter_row = find_chapter_by_id(book_id, chapter_id)
+
+    if chapter_row is None:
+        return generate_failure_response('Could not find chapter', messages=[msg_action_cancelled_wrong()])
+
+    folder_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_id, chapter_id)
+
+    if os.path.exists(folder_path):
+        shutil.rmtree(folder_path)
+
+    preview_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_id, '.previews',
+                                chapter_id + '.webp')
+
+    if os.path.exists(preview_path):
+        os.unlink(preview_path)
+
+    db.session.delete(chapter_row)
+
+    existing_book_value = book_row.skip
+
+    if existing_book_value is None or len(existing_book_value) == 0:
+        book_row.skip = chapter_id
+    else:
+        book_row.skip = book_row.skip + "," + chapter_id
+
+    db.session.commit()
+
+    return generate_success_response('chapter removed', messages=[msg_operation_complete()])
+
+
 # Recent History
 
 @volume_blueprint.route('/list/history', methods=['POST'])
@@ -519,14 +566,6 @@ def list_history(user_details):
 def serve_image(user_details, book_folder: str, chapter_name: str, image_name: str) -> 'Response':
     """
     Serve an image file from the server.
-
-    Args:
-    book_folder (str): The folder containing the book.
-    chapter_name (str): The name of the chapter.
-    image_name (str): The name of the image file.
-
-    Returns:
-    Response: The image file or a 404 error if not found.
     """
     if not current_app.config[PROPERTY_SERVER_VOLUME_READY]:
         return generate_failure_response('Volume service not ready', 400)
@@ -539,23 +578,52 @@ def serve_image(user_details, book_folder: str, chapter_name: str, image_name: s
     if not book_record:
         return generate_failure_response('Volume not found', 404)
 
-    # Get the user's max rating
+    # Check user rating access
     max_rating = get_volume_max_rating(user_details)
-
     if book_record.rating > max_rating:
         return generate_failure_response('User is not allowed to view content out of their rating zone')
 
     file_path = os.path.join(current_app.config[PROPERTY_SERVER_VOLUME_FOLDER], book_folder, chapter_name, image_name)
 
-    if os.path.exists(file_path) and os.path.isfile(file_path):
-        response = make_response(send_from_directory(os.path.dirname(file_path), os.path.basename(file_path)))
-        expires_at = datetime.now() + timedelta(hours=5)
-        response.headers['Cache-Control'] = 'public, max-age=18000'  # 5 hours cache
-        response.headers['Expires'] = expires_at.strftime('%a, %d %b %Y %H:%M:%S GMT')
-        return response
-    else:
+    if not (os.path.exists(file_path) and os.path.isfile(file_path)):
         logging.warning('File not found: ' + file_path)
         abort(404)
+
+    # Check for quick mode
+    quick = request.args.get('quick', 'false').lower() == 'true'
+
+    if quick:
+        try:
+            # Open and shrink the image
+            with Image.open(file_path) as img:
+                width, height = img.size
+                if width > 256:
+                    new_height = int((256 / width) * height)
+                    img = img.resize((256, new_height), Image.LANCZOS)
+
+                # Save to in-memory bytes
+                img_bytes = io.BytesIO()
+                img_format = img.format if img.format else 'JPEG'
+                img.save(img_bytes, format=img_format)
+                img_bytes.seek(0)
+
+            # Build the Flask response
+            response = make_response(send_file(img_bytes, mimetype=f'image/{img_format.lower()}'))
+            expires_at = datetime.now() + timedelta(minutes=1)
+            response.headers['Cache-Control'] = 'public, max-age=60'
+            response.headers['Expires'] = expires_at.strftime('%a, %d %b %Y %H:%M:%S GMT')
+            return response
+
+        except Exception as e:
+            logging.exception(f'Error generating quick image for {file_path}: {e}')
+            abort(500)
+
+    # Default: full-size image, 5-hour cache
+    response = make_response(send_from_directory(os.path.dirname(file_path), os.path.basename(file_path)))
+    expires_at = datetime.now() + timedelta(hours=5)
+    response.headers['Cache-Control'] = 'public, max-age=18000'  # 5 hours
+    response.headers['Expires'] = expires_at.strftime('%a, %d %b %Y %H:%M:%S GMT')
+    return response
 
 
 @volume_blueprint.route('/serve_preview/<book_folder>/<chapter_name>', methods=['GET'])

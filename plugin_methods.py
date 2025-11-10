@@ -48,7 +48,7 @@ def plugin_url_arg(arg_name: str, arg_id: str, arg_description: str = '', prefix
 
 
 def plugin_select_arg(arg_name: str, arg_id: str, default_value: str, values: List[Dict[str, str]],
-                      arg_description: str = '', prefix_lang_id: str = ''):
+                      arg_description: str = '', prefix_lang_id: str = '', adv: str = ''):
     return {
         "name": arg_name,
         "id": arg_id,
@@ -57,6 +57,7 @@ def plugin_select_arg(arg_name: str, arg_id: str, default_value: str, values: Li
         "description": arg_description,
         "values": values,
         "prefix_lang_id": prefix_lang_id,
+        "adv": adv,
     }
 
 
@@ -122,8 +123,8 @@ def add_logging_arg(args: list) -> list:
     result = args.copy()  # Copy the original arguments list
 
     # Append the logging argument to the list
-    result.append(plugin_select_arg("Logging Level", "_logging_level", "20", DEFAULT_LOGGING_VALUES, prefix_lang_id='com'))
-    result.append(plugin_select_arg("Prevent Duplicate Tasks", "_duplicate_checking", "y", PLUGIN_VALUES_Y_N, prefix_lang_id='com'))
+    result.append(plugin_select_arg("Logging Level", "_logging_level", "20", DEFAULT_LOGGING_VALUES, prefix_lang_id='com', adv='Y'))
+    result.append(plugin_select_arg("Prevent Duplicate Tasks", "_duplicate_checking", "y", PLUGIN_VALUES_Y_N, prefix_lang_id='com', adv='Y'))
 
     # Ensure each argument has a description
     for row in result:

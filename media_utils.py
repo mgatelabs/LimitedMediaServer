@@ -5,6 +5,7 @@ from datetime import datetime
 import mimetypes
 import shutil
 from datetime import timedelta
+import subprocess
 
 from flask_sqlalchemy.session import Session
 from webvtt import WebVTT
@@ -14,7 +15,7 @@ from db import MediaFile, MediaFolder, db
 from feature_flags import MANAGE_APP
 from media_queries import find_folder_by_id, find_file_by_id, insert_file
 from text_utils import is_guid
-from thread_utils import TaskWrapper
+from thread_utils import TaskWrapper, NoOpTaskWrapper
 
 
 def clean_files_for_mediafile(file: MediaFile, primary_path: str, archive_path: str):
@@ -183,25 +184,31 @@ def get_filename_with_extension(video_filename, file_ending: str):
 
 
 def convert_vtt_to_srt(vtt_file, srt_file, offset_seconds=0):
+    """Convert a VTT file to SRT format with an optional time offset."""
     try:
-        """Convert a VTT file to SRT format with an optional time offset."""
         vtt = WebVTT.read(vtt_file)
 
         def adjust_timestamp(timestamp, offset):
             """Adjust a timestamp by the given offset in seconds."""
-            parts = timestamp.split(':')  # Split into components
-            if len(parts) == 2:  # Format MM:SS.sss
+            parts = timestamp.split(':')
+            if len(parts) == 2:  # MM:SS.sss
                 h, m, s = 0, int(parts[0]), float(parts[1].replace(',', '.'))
-            elif len(parts) == 3:  # Format HH:MM:SS.sss
+            elif len(parts) == 3:  # HH:MM:SS.sss
                 h, m, s = int(parts[0]), int(parts[1]), float(parts[2].replace(',', '.'))
             else:
                 raise ValueError(f"Unexpected timestamp format: {timestamp}")
 
-            original_time = timedelta(hours=h, minutes=m, seconds=s)
-            new_time = original_time + timedelta(seconds=offset)
-            new_time = max(new_time, timedelta(0))  # Prevent negative timestamps
+            new_time = timedelta(hours=h, minutes=m, seconds=s) + timedelta(seconds=offset)
+            if new_time < timedelta(0):
+                new_time = timedelta(0)
 
-            return str(new_time)[:-3].replace(',', '.')  # Ensure SRT format
+            total_seconds = new_time.total_seconds()
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            seconds = total_seconds % 60
+
+            # Format as 0:00:00.000
+            return f"{hours}:{minutes:02}:{seconds:06.3f}"
 
         with open(srt_file, 'w', encoding='utf-8') as f:
             for i, caption in enumerate(vtt):
@@ -213,6 +220,7 @@ def convert_vtt_to_srt(vtt_file, srt_file, offset_seconds=0):
                 f.write(f"{caption.text}\n\n")
 
         return True
+
     except Exception as e:
         logging.exception(e)
         return False
@@ -324,3 +332,38 @@ def ingest_file(item_path: str, item_name: str, folder_id: str, is_archive: bool
             task_wrapper.warn(f'Ignoring file {item_name}, unknown MIME TYPE')
 
     return False
+
+def get_video_params(filepath):
+    """Returns (width, height, codec_name) from a video file."""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height,codec_name",
+            "-of", "csv=p=0",
+            filepath
+        ]
+        output = subprocess.check_output(cmd, text=True).strip()
+        w, h, codec = output.split(',')
+        return int(w), int(h), codec
+    except Exception:
+        return None
+
+def make_blank_segment(output_path: str, duration: float, width=640, height=360, task_wrapper: TaskWrapper = NoOpTaskWrapper()):
+    """
+    Creates a black/silent segment of given duration and dimensions.
+    """
+    try:
+        cmd = [
+            "ffmpeg",
+            "-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r=30",
+            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+            "-t", str(duration),
+            "-c:v", "libx264", "-c:a", "aac",
+            "-shortest", "-y", output_path
+        ]
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return os.path.exists(output_path)
+    except Exception as e:
+        task_wrapper.warn(f"Failed to create blank segment: {e}")
+        return False

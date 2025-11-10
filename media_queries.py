@@ -254,7 +254,7 @@ def count_root_folders(filter_text: str = None, max_limit: int = 0, db_session: 
 # File Methods
 
 def insert_file(folder_id: str, filename: str, mime_type: str, archive: bool, preview: bool, file_size: int,
-                created: datetime, db_session: Session = db.session) -> MediaFile:
+                created: datetime, db_session: Session = db.session, overide_uid: str = None) -> MediaFile:
     """
     Insert a new file or update an existing one.
 
@@ -280,6 +280,9 @@ def insert_file(folder_id: str, filename: str, mime_type: str, archive: bool, pr
         filesize=file_size,
         created=created
     )
+
+    if overide_uid is not None:
+        new_file.id = overide_uid
 
     db_session.add(new_file)
     db_session.commit()

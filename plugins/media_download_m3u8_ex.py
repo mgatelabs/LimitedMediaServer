@@ -11,12 +11,13 @@ from urllib.parse import urljoin
 
 from flask_sqlalchemy.session import Session
 
-from curl_utils import custom_curl_get, read_temp_file
+from curl_utils import custom_curl_get, read_temp_file, read_header_file
 from feature_flags import MANAGE_MEDIA
 from file_utils import is_valid_url, temporary_folder
 from html_utils import get_headers
+from media_probe import get_file_formats
 from media_queries import find_folder_by_id, insert_file
-from media_utils import get_data_for_mediafile
+from media_utils import get_data_for_mediafile, get_video_params, make_blank_segment
 from plugin_methods import plugin_filename_arg, plugin_url_arg, plugin_select_arg, plugin_select_values
 from plugin_system import ActionMediaFolderPlugin
 from text_utils import is_blank
@@ -55,7 +56,7 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
 
         result.append(
             plugin_select_arg('Location', 'dest', 'primary',
-                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media')
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media', adv='Y')
         )
 
         result.append(
@@ -69,8 +70,6 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
         result.append(
             plugin_url_arg('URL', 'url', 'The link to the m3u8 file.', '', 'yes', "url")
         )
-
-
 
         return result
 
@@ -151,6 +150,8 @@ class DownloadM3u8JobEx(TaskWrapper):
 
         with temporary_folder(self.temp_path, self) as temp_folder:
 
+            self.debug(f'temp folder: {temp_folder}')
+
             # The M3u8 file
             temp_m3u8_file = os.path.join(temp_folder, 'download.m3u8')
             # The re-made M3u8 file
@@ -184,10 +185,14 @@ class DownloadM3u8JobEx(TaskWrapper):
 
             # We may need an encryption key
             temp_key = os.path.join(temp_folder, 'download.key')
+            has_key = False
 
             # Process playlist
             i = 0
             total_length = len(lines)
+
+            last_good_segment = None
+            last_determined_ending = None
 
             while i < len(lines):
 
@@ -217,7 +222,7 @@ class DownloadM3u8JobEx(TaskWrapper):
                             return None
 
                         # key_data = file_to_hex_string(temp_key)
-                        # has_key = True
+                        has_key = True
 
                         self.debug(f"Decryption key fetched from: {key_url}")
 
@@ -234,12 +239,69 @@ class DownloadM3u8JobEx(TaskWrapper):
 
                     self.debug(f"Downloading segment: {segment_url}")
 
-                    if not custom_curl_get(segment_url, headers, segment_file, self):
+                    temp_header_file = os.path.join(temp_folder, f'seg_{i}.txt')
+
+                    if not custom_curl_get(segment_url, headers, segment_file, self, header_file=temp_header_file):
                         self.warn(f"Failed to download m3u8 segment {segment_name}.")
                         self.set_warning()
                     else:
-                        made_lines.append(line)
-                        made_lines.append(segment_name)
+
+                        current_headers = read_header_file(temp_header_file)
+
+                        http_status = current_headers['@HTTP_STATUS']
+
+                        # Skip missing files
+                        if http_status != '404':
+
+                            if http_status != 200:
+                                self.debug(f'http-status: {http_status}')
+
+                            if 'content-type' in current_headers:
+                                self.debug(f'{segment_name} content-type: {current_headers.get("content-type")}')
+
+                            valid_format = True
+
+                            determined_ending = 'mp4'
+
+                            available_format = get_file_formats(segment_file, self)
+                            if available_format is None:
+                                valid_format = has_key
+                            elif ('mp4' == available_format):
+                                valid_format = True
+                                self.trace(f'Segment {segment_name} is MP4')
+                            else:
+                                determined_ending = available_format
+
+                            new_segment_name = f'seg_{i}.' + determined_ending
+                            new_segment_file = os.path.join(temp_folder, new_segment_name)
+                            # Move it to a new name
+                            shutil.move(segment_file, new_segment_file)
+                            self.trace(f'Segment {segment_name} is actually {determined_ending}')
+                            segment_name = new_segment_name
+
+                            last_good_segment = new_segment_file
+                            last_determined_ending = determined_ending
+
+                            if valid_format:
+                                made_lines.append(line)
+                                made_lines.append(segment_name)
+                        else:
+                            if last_good_segment is not None and not has_key:
+                                new_segment_name = f'seg_{i}.' + last_determined_ending
+                                new_segment_file = os.path.join(temp_folder, new_segment_name)
+                                last_w, last_h, codec = get_video_params(last_good_segment)
+                                if last_w is not None and last_h is not None:
+                                    duration = float(line.split(":")[1].split(",")[0])
+                                    make_blank_segment(new_segment_file, duration, last_w, last_h, self)
+                                    if os.path.exists(new_segment_file):
+                                        made_lines.append(line)
+                                        made_lines.append(segment_name)
+                                    else:
+                                        self.debug(f'Could not generate segment for {segment_name}')
+                                else:
+                                    self.debug(f'Could not determine dimensions for {segment_name}')
+                            else:
+                                self.debug(f'{segment_name} is missing 404')
 
                     i += 2
                 else:

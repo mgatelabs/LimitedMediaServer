@@ -311,7 +311,7 @@ class DeFreezeJob(TaskWrapper):
         self.primary_path = primary_path
         self.archived_path = archived_path
         self.temp_folder = temp_folder
-        self.weight = 51
+        self.weight = 70
         if folder_id != '*':
             self.ref_folder_id = folder_id
 

@@ -1,13 +1,12 @@
 import os.path
-import subprocess
 import platform
+import shlex
+import subprocess
+import tempfile
 import urllib
 from typing import Optional
-import shlex
 
 from thread_utils import TaskWrapper, NoOpTaskWrapper
-import tempfile
-
 from utility import random_sleep
 
 
@@ -26,13 +25,17 @@ def extract_binary_content(input_file, output_file, task_wrapper: TaskWrapper):
             # Write the rest of the file (binary data) directly to the output file
             out.write(f.read())
 
+
 """
 This includes utility methods which will call a special version of CURL, that emulates Chrome
 """
 
-def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrapper = NoOpTaskWrapper(), insecure: bool = False):
+
+def custom_curl_get(url, headers=None, download_file=None, task_wrapper: TaskWrapper = NoOpTaskWrapper(),
+                    insecure: bool = False, header_file=None):
     """
     This is to call the custom CHROM based CURL as a GET command
+    :param header_file:
     :param url:
     :param headers:
     :param download_file:
@@ -51,6 +54,9 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
     if download_file:
         command.extend(['-o', download_file])
 
+    if header_file is not None:
+        command.extend(['-D', header_file])
+
     if insecure:
         command.extend(['-k'])
 
@@ -63,7 +69,6 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
         result = subprocess.run(command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         if task_wrapper.can_trace():
-
             output_normal = result.stdout.decode('utf-8')
             output_error = result.stderr.decode('utf-8')
 
@@ -76,7 +81,7 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
         if ret_code == 61:
             # Delay a bit...
             random_sleep(6, 3)
-            return custom_curl_get_raw(url, headers, download_file, task_wrapper, insecure)
+            return custom_curl_get_raw(url, headers, download_file, task_wrapper, insecure, header_file)
 
         return ret_code == 0
     except subprocess.CalledProcessError as e:
@@ -84,9 +89,13 @@ def custom_curl_get(url, headers=None, download_file=None, task_wrapper:TaskWrap
         task_wrapper.error(f"Error: {e}")
         return False
 
-def custom_curl_get_raw(url, headers=None, download_file=None, task_wrapper:TaskWrapper = NoOpTaskWrapper(), insecure: bool = False):
+
+def custom_curl_get_raw(url, headers=None, download_file=None, task_wrapper: TaskWrapper = NoOpTaskWrapper(),
+                        insecure: bool = False, header_file=None):
     """
     This is to call the custom CHROM based CURL as a GET command
+    :param insecure:
+    :param header_file:
     :param url:
     :param headers:
     :param download_file:
@@ -109,6 +118,9 @@ def custom_curl_get_raw(url, headers=None, download_file=None, task_wrapper:Task
 
     temp_file_path = None
     try:
+
+        if header_file is not None:
+            command.extend(['-D', header_file])
 
         # Get a temporary file path
         temp_file_path = tempfile.mktemp()
@@ -143,7 +155,8 @@ def custom_curl_get_raw(url, headers=None, download_file=None, task_wrapper:Task
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-def custom_curl_headers(url, headers=None, download_file=None, task_wrapper:TaskWrapper = NoOpTaskWrapper()):
+
+def custom_curl_headers(url, headers=None, download_file=None, task_wrapper: TaskWrapper = NoOpTaskWrapper()):
     """
     This is to call the custom CHROM based CURL as a GET command
     :param url:
@@ -191,7 +204,8 @@ def dict_to_urlencoded(data: dict) -> str:
     return urllib.parse.urlencode(data)
 
 
-def custom_curl_post(url, data: Optional[dict[str, str]], headers=None, download_file=None, task_logger:TaskWrapper=None):
+def custom_curl_post(url, data: Optional[dict[str, str]], headers=None, download_file=None,
+                     task_logger: TaskWrapper = None):
     """
     This is to call the custom CHROM based CURL as a POST command
     :param url:
@@ -229,6 +243,7 @@ def custom_curl_post(url, data: Optional[dict[str, str]], headers=None, download
             print(f"Error: {e}")
         return False
 
+
 def read_temp_file(temp_file_path):
     try:
         with open(temp_file_path, 'r') as temp_file:
@@ -237,3 +252,21 @@ def read_temp_file(temp_file_path):
     except IOError as e:
         print(f"Error: {e}")
         return None
+
+
+def read_header_file(header_file_path) -> dict[str, str]:
+    headers = {}
+    with open(header_file_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("HTTP/"):
+                # Split "HTTP/2 404 ..." and take just the status code
+                parts = line.split()
+                if len(parts) >= 2:
+                    headers["@HTTP_STATUS"] = parts[1]
+            if line and ":" in line:
+                key, value = line.split(":", 1)
+                headers[key.strip().lower()] = value.strip()
+    return headers

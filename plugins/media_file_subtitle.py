@@ -9,19 +9,19 @@ from typing import Optional
 
 from flask_sqlalchemy.session import Session
 
-from constants import MAX_WORKERS
+from constants import PROPERTY_SERVER_MEDIA_ENCODER_PORT, PROPERTY_SERVER_MEDIA_ENCODER_HOST
 from db import MediaFile, MediaFolder
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
-    get_ffmpeg_f_argument_from_mimetype, burn_subtitles_to_video, FFMPEG_AUDIO_BIT, FFMPEG_AUDIO_BIT_RATE_VALUES, \
-    FFMPEG_STEREO, FFMPEG_STEREO_VALUES
+    get_ffmpeg_f_argument_from_mimetype, FFMPEG_AUDIO_BIT, FFMPEG_AUDIO_BIT_RATE_VALUES, \
+    FFMPEG_STEREO, FFMPEG_STEREO_VALUES, encode_video
 from file_utils import temporary_folder
 from media_queries import insert_file, find_file_by_filename, find_files_in_folder
 from media_utils import get_data_for_mediafile, \
     get_filename_with_extension, convert_vtt_to_srt, get_folder_by_user, get_file_by_user, describe_file_size_change
 from number_utils import is_integer_with_sign
 from plugin_methods import plugin_string_arg
-from plugin_system import ActionMediaFilePlugin, ActionMediaFolderPlugin
+from plugin_system import ActionMediaFilePlugin, ActionMediaFolderPlugin, ActionMediaFilesPlugin
 from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 
@@ -34,6 +34,15 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medsub'
+        self.media_encoder_host = None
+        self.media_encoder_port = 8080
+
+    def absorb_config(self, config):
+        super().absorb_config(config)
+        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
+        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
+        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
+            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_file_subtitle', 'sequence': 1}
@@ -117,7 +126,122 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
     def create_task(self, db_session: Session, args):
         return SubtitleEncodeJob("SubtitleFile", 'Encoding: ' + args['file_id'], args['file_id'], None,
                                  args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
-                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't', int(args['offset']))
+                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
+                                 int(args['offset']), encoder_host=self.media_encoder_host,
+                                 encoder_port=self.media_encoder_port)
+
+
+class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
+    """
+    Subtitle a file using FFMPEG
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.prefix_lang_id = 'medsub'
+        self.media_encoder_host = None
+        self.media_encoder_port = 8080
+
+    def absorb_config(self, config):
+        super().absorb_config(config)
+        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
+        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
+        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
+            self.media_encoder_host = None
+
+    def get_sort(self):
+        return {'id': 'media_file_subtitle', 'sequence': 1}
+
+    def add_args(self, parser: argparse):
+        pass
+
+    def use_args(self, args):
+        pass
+
+    def get_action_name(self):
+        return 'Burn Subtitles'
+
+    def get_action_id(self):
+        return 'action.files.subtitle'
+
+    def get_action_icon(self):
+        return 'title'
+
+    def get_action_args(self):
+        result = super().get_action_args()
+
+        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
+        result.append(FFMPEG_PRESET)
+        result.append(FFMPEG_CRF)
+        result.append(FFMPEG_AUDIO_BIT)
+        result.append(FFMPEG_STEREO)
+
+        return result
+
+    def process_action_args(self, args):
+        results = []
+
+        if 'ffmpeg_preset' not in args or is_blank(args['ffmpeg_preset']):
+            results.append('ffmpeg_preset is required')
+        else:
+            args['ffmpeg_preset'] = clean_string(args['ffmpeg_preset'])
+
+            if args['ffmpeg_preset'] not in FFMPEG_PRESET_VALUES:
+                results.append('unknown ffmpeg_preset value')
+
+        if 'ffmpeg_crf' not in args or is_blank(args['ffmpeg_crf']):
+            results.append('ffmpeg_crf is required')
+        else:
+            args['ffmpeg_crf'] = clean_string(args['ffmpeg_crf'])
+
+            if args['ffmpeg_crf'] not in FFMPEG_CRF_VALUES:
+                results.append('unknown ffmpeg_crf value')
+        # Audio Bit Rate
+        if 'ffmpeg_abr' not in args or is_blank(args['ffmpeg_abr']):
+            results.append('ffmpeg_abr is required')
+        else:
+            args['ffmpeg_abr'] = clean_string(args['ffmpeg_abr'])
+
+            if args['ffmpeg_abr'] not in FFMPEG_AUDIO_BIT_RATE_VALUES:
+                results.append('unknown ffmpeg_abr value')
+        # Mix Down
+        if 'ffmpeg_mix' not in args or is_blank(args['ffmpeg_mix']):
+            results.append('ffmpeg_mix is required')
+        else:
+            args['ffmpeg_mix'] = clean_string(args['ffmpeg_mix'])
+
+            if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
+                results.append('unknown ffmpeg_mix value')
+
+        if 'offset' not in args or is_blank(args['offset']):
+            args['offset'] = 0
+        else:
+            args['offset'] = clean_string(args['offset'])
+
+            if not is_integer_with_sign(args['offset']):
+                results.append('offset is not a valid integer')
+
+        if len(results) > 0:
+            return results
+        return None
+
+    def get_feature_flags(self):
+        return MANAGE_MEDIA
+
+    def create_task(self, db_session: Session, args):
+
+        file_list = args['file_id'].split(",")
+
+        result = []
+
+        for file_id in file_list:
+            result.append(SubtitleEncodeJob("SubtitleFile", 'Encoding: ' + file_id, file_id, None,
+                                 args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
+                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
+                                 int(args['offset']), encoder_host=self.media_encoder_host,
+                                 encoder_port=self.media_encoder_port))
+
+        return result
 
 
 class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
@@ -128,6 +252,15 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medsubfol'
+        self.media_encoder_host = None
+        self.media_encoder_port = 8080
+
+    def absorb_config(self, config):
+        super().absorb_config(config)
+        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
+        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
+        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
+            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_folder_subtitle', 'sequence': 1}
@@ -202,12 +335,15 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
     def create_task(self, db_session: Session, args):
         return SubtitleEncodeJob("SubtitleFolder", 'Encoding: ' + args['folder_id'], None, args['folder_id'],
                                  args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
-                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't')
+                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
+                                 encoder_host=self.media_encoder_host, encoder_port=self.media_encoder_port)
 
 
 class SubtitleEncodeJob(TaskWrapper):
     def __init__(self, name, description, file_id: Optional[str], folder_id: Optional[str], ffmpeg_preset: str,
-                 ffmpeg_crf: str, primary_folder: str, archive_folder: str, temp_folder: str, audio_bit_rate:int=128, stereo: bool = True, offset:int = 0):
+                 ffmpeg_crf: str, primary_folder: str, archive_folder: str, temp_folder: str, audio_bit_rate: int = 128,
+                 stereo: bool = True, offset: int = 0, encoder_host: str | None = None,
+                 encoder_port: int | None = 8080):
         super().__init__(name, description)
         self.file_id = file_id
         self.folder_id = folder_id
@@ -216,13 +352,17 @@ class SubtitleEncodeJob(TaskWrapper):
         self.temp_folder = temp_folder
         self.ffmpeg_preset = ffmpeg_preset
         self.ffmpeg_crf = int(ffmpeg_crf)
-        self.weight = 80
+        self.weight = 70
+        if encoder_host is not None and len(encoder_host) > 0:
+            self.weight = 10
         self.audio_bit_rate = audio_bit_rate
         self.stereo = stereo
         self.offset = offset
+        self.encoder_host = encoder_host
+        self.encoder_port = encoder_port
 
     def find_subtitle_for_file(self, folder: MediaFolder, file: MediaFile, temp_folder: str, db_session: Session) -> \
-    Optional[str]:
+            Optional[str]:
 
         possible_srt_name = get_filename_with_extension(file.filename, 'srt')
         possible_vtt_name = get_filename_with_extension(file.filename, 'vtt')
@@ -258,6 +398,7 @@ class SubtitleEncodeJob(TaskWrapper):
                 folder_row = get_folder_by_user(self.folder_id, self.user, db_session)
                 if self.can_trace():
                     self.trace('Getting Files')
+                self.ref_folder_id = folder_row.id
                 files = find_files_in_folder(folder_row.id, None, 0, 1000, db_session=db_session)
                 for file in files:
                     if file.mime_type.startswith('video/'):
@@ -279,6 +420,7 @@ class SubtitleEncodeJob(TaskWrapper):
 
                 if file_row.mime_type.startswith('video/'):
                     to_process.append(file_row)
+                    self.ref_folder_id = folder_row.id
                 else:
                     self.error(f'Given file mime-type {file_row.mime_type} is not a video')
 
@@ -331,8 +473,17 @@ class SubtitleEncodeJob(TaskWrapper):
 
                     self.info('Found Subtitle File, Working...')
 
-                    if burn_subtitles_to_video(source_file, srt_file, dest_file, self.offset, desired_format, self.ffmpeg_preset,
-                                               self.ffmpeg_crf, self.stereo, self.audio_bit_rate, log=self):
+                    modified_encoder_host = None
+
+                    if self.encoder_host is not None:
+                        modified_encoder_host = 'http://' + self.encoder_host + ":" + str(self.encoder_port)
+
+                    if encode_video(source_file, dest_file, desired_format, self.ffmpeg_preset, self.ffmpeg_crf,
+                                    self.stereo, self.audio_bit_rate, log=self, server_url=modified_encoder_host,
+                                    srt_file=srt_file):
+                        # if burn_subtitles_to_video(source_file, srt_file, dest_file, self.offset, desired_format,
+                        #                           self.ffmpeg_preset,
+                        #                           self.ffmpeg_crf, self.stereo, self.audio_bit_rate, log=self):
 
                         src_path = Path(temp_folder) / 'temp.mp4'
 

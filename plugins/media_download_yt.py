@@ -8,7 +8,7 @@ from feature_flags import MANAGE_MEDIA
 from file_utils import temporary_folder
 from media_queries import find_folder_by_id
 from media_utils import ingest_file
-from plugin_methods import plugin_string_arg
+from plugin_methods import plugin_url_arg
 from plugin_system import ActionMediaFolderPlugin
 from text_utils import is_blank
 from thread_utils import TaskWrapper
@@ -44,7 +44,7 @@ class DownloadYtPlugin(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_string_arg('URL', 'url', 'Link to the video, playlist, page.')
+            plugin_url_arg('URL', 'url', 'Link to the video, playlist, page.', clear_after='yes')
         )
 
         result.append({

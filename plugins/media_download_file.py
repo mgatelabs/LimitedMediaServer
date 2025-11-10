@@ -52,7 +52,7 @@ class DownloadFilePlugin(ActionMediaFolderPlugin):
         result = super().get_action_args()
 
         result.append(
-            plugin_url_arg('URL', 'url', 'The link to the file to grab.')
+            plugin_url_arg('URL', 'url', 'The link to the file to grab.', clear_after="yes", arg1="url")
         )
 
         result.append(
@@ -63,7 +63,7 @@ class DownloadFilePlugin(ActionMediaFolderPlugin):
 
         result.append(
             plugin_select_arg('Location', 'dest', 'primary',
-                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media')
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media', adv='Y')
         )
 
         if platform.system() != 'Linux':
@@ -72,7 +72,7 @@ class DownloadFilePlugin(ActionMediaFolderPlugin):
             download_options = plugin_select_values('Default Downloader', 'system', 'Google Curl Downloader', 'gcurl')
 
         result.append(
-            plugin_select_arg('Method', 'meth', 'system', download_options, 'Which download subsystem to use?')
+            plugin_select_arg('Method', 'meth', 'system', download_options, 'Which download subsystem to use?', adv='Y')
         )
 
         return result

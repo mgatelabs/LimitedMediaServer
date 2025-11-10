@@ -4,6 +4,7 @@ import os
 import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from math import floor
 
 from flask import Blueprint, request, current_app
 from sqlalchemy.orm import sessionmaker, Session
@@ -18,7 +19,7 @@ from messages import msg_invalid_parameter, msg_tasks_started, msg_action_cancel
     msg_missing_parameter, msg_action_failed, msg_operation_complete, msg_action_failed_missing, msg_removed_x_items, \
     msg_found_x_results, msg_access_denied_content_rating, msg_found_x_results_removed_y, msg_auth_feature_required
 from number_utils import is_integer
-from text_utils import is_blank
+from text_utils import is_blank, clean_string
 from thread_utils import TaskManager, get_exception, TaskWrapper, TaskWorker
 
 process_blueprint = Blueprint('process', __name__)
@@ -275,6 +276,25 @@ def get_all_task_status(user_detail):
 def get_all_task_status_extra_method(user_detail, extra_method_call):
     global task_manager
 
+    page = clean_string(request.form.get('page'))
+    page_size = clean_string(request.form.get('page_size'))
+
+    if not page:
+        page = 0
+    elif is_integer(page):
+        page = int(page)
+    else:
+        page = 0
+
+    if not page_size:
+        page_size = 20
+    elif is_integer(page_size):
+        page_size = int(page_size)
+    else:
+        page_size = 20
+
+
+
     removed = task_manager.remove_dead_tasks()
 
     if removed > 0:
@@ -300,7 +320,35 @@ def get_all_task_status_extra_method(user_detail, extra_method_call):
 
     result = []
 
-    for task in tasks:
+    total_items = len(tasks)
+
+    pages = floor(total_items / page_size)
+    # Check for overflow
+    if total_items % page_size > 0:
+        pages = pages + 1
+
+    # Sanity
+
+    if page_size < 0:
+        page_size = 20
+    elif page_size > 150:
+        page_size = 150
+
+    if pages == 1:
+        page = 0
+    elif page < 0:
+        page = 0
+    elif pages > 0 and page >= page_size:
+        page = page_size - 1
+    elif pages == 0:
+        page = 0
+
+    start = page * page_size
+    end = start + page_size
+
+    for task in tasks[start:end]:
+        if not task:
+            break
         result.append({
             "id": task.task_id,
             "name": task.name,
@@ -332,7 +380,11 @@ def get_all_task_status_extra_method(user_detail, extra_method_call):
     else:
         msg = msg_found_x_results_removed_y(len(tasks), removed_tasks)
 
-    return generate_success_response('', {'tasks': result, 'weight': task_manager.get_weight(),
+    return generate_success_response('', {'page': page,
+                                          'pages': pages,
+                                          'total': total_items,
+                                          'tasks': result,
+                                          'weight': task_manager.get_weight(),
                                           'workers': task_manager.get_worker_status()},
                                      messages=[msg])
 

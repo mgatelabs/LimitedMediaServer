@@ -567,6 +567,7 @@ def move_media_folder(user_details: dict) -> tuple:
 
     return generate_success_response('Folder Moved', messages=[msg_folder_moved()])
 
+
 @media_blueprint.route('/folder/activate', methods=['POST'])
 @feature_required(media_blueprint, MANAGE_MEDIA)
 def activate_folder(user_details: dict) -> tuple:
@@ -581,8 +582,9 @@ def activate_folder(user_details: dict) -> tuple:
         return generate_failure_response('Could not find requested folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(source_row):
-        return generate_failure_response('User is not allowed to activate a folder in a folder with a higher rating limit',
-                                         messages=[msg_access_denied_content_rating()])
+        return generate_failure_response(
+            'User is not allowed to activate a folder in a folder with a higher rating limit',
+            messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(source_row):
         return generate_failure_response(
@@ -594,6 +596,7 @@ def activate_folder(user_details: dict) -> tuple:
     db.session.commit()
 
     return generate_success_response('Folder Activated', messages=[msg_folder_updated()])
+
 
 @media_blueprint.route('/folder/inactivate', methods=['POST'])
 @feature_required(media_blueprint, MANAGE_MEDIA)
@@ -609,8 +612,9 @@ def inactivate_folder(user_details: dict) -> tuple:
         return generate_failure_response('Could not find requested folder', messages=[msg_action_cancelled_wrong()])
 
     if not folder_rating_checks(source_row):
-        return generate_failure_response('User is not allowed to inactivate a folder in a folder with a higher rating limit',
-                                         messages=[msg_access_denied_content_rating()])
+        return generate_failure_response(
+            'User is not allowed to inactivate a folder in a folder with a higher rating limit',
+            messages=[msg_access_denied_content_rating()])
 
     if not folder_group_checks(source_row):
         return generate_failure_response(
@@ -622,6 +626,7 @@ def inactivate_folder(user_details: dict) -> tuple:
     db.session.commit()
 
     return generate_success_response('Folder Inactivated', messages=[msg_folder_updated()])
+
 
 # File Management
 
@@ -789,17 +794,21 @@ def migrate_media_file(user_details: dict) -> tuple:
     primary_folder = current_app.config[PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER]
     archive_folder = current_app.config[PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER]
 
+    # Get the Paths
     old_file = get_data_for_mediafile(file_row, primary_folder, archive_folder)
+    # Flip the path
     file_row.archive = not file_row.archive
     new_file = get_data_for_mediafile(file_row, primary_folder, archive_folder)
 
-    try:
-        shutil.copyfile(old_file, new_file)
-        db.session.commit()
-        os.unlink(old_file)
-        return generate_success_response('', messages=[msg_file_migrated()])
-    except Exception as e:
-        logging.exception(e)
+    if os.path.exists(old_file):
+        try:
+            shutil.copyfile(old_file, new_file)
+            if os.path.exists(new_file):
+                db.session.commit()
+                os.unlink(old_file)
+                return generate_success_response('', messages=[msg_file_migrated()])
+        except Exception as e:
+            logging.exception(e)
 
     return generate_failure_response('Failed to migrate file!', messages=[msg_action_failed()])
 

@@ -2,6 +2,10 @@ import logging
 import subprocess
 import json
 
+import requests
+import time
+from pathlib import Path
+
 from plugin_methods import plugin_select_arg, plugin_select_values
 from thread_utils import TaskWrapper, NoOpTaskWrapper
 
@@ -54,57 +58,141 @@ def get_ffmpeg_f_argument_from_mimetype(mime: str) -> str:
     return 'mp4'
 
 
-def encode_video(input_file, output_file, input_format=None, ffmpeg_preset: str = 'medium', constant_rate_factor=23,
-                 stereo=True, audio_bitrate=128, log: TaskWrapper = NoOpTaskWrapper()) -> bool:
-    try:
-        # Construct the FFMPEG command
-        command = ["ffmpeg"]
+def encode_video(
+    input_file,
+    output_file,
+    input_format=None,
+    ffmpeg_preset: str = 'medium',
+    constant_rate_factor=23,
+    stereo=True,
+    audio_bitrate=128,
+    server_url: str | None = None,
+    srt_file: str | None = None,
+    log: TaskWrapper= NoOpTaskWrapper()
+) -> bool:
+    log = log or logging.getLogger(__name__)
+    input_path = Path(input_file)
+    output_path = Path(output_file)
 
-        # Add the input format if specified
-        if input_format:
-            command.extend(["-f", input_format])
+    # --- Nested helper for local fallback ---
+    def _run_local_encode():
+        try:
+            log.info("Starting local ffmpeg encoding...")
+            command = ["ffmpeg"]
 
-        channels = 1
-        if stereo:
-            channels = 2
+            if input_format:
+                command.extend(["-f", input_format])
 
-        command.extend([
-            "-y", "-i", input_file,
-            "-vf", "scale='min(3840,iw)':-2",
-            "-c:v", "libx264",
-            "-preset", ffmpeg_preset,
-            "-profile:v", "high",
-            "-level", "4.2",
-            "-pix_fmt", "yuv420p",
-            "-crf", str(constant_rate_factor),
-            "-movflags", "+faststart",
-            "-c:a", "aac",
-            "-b:a", f"{audio_bitrate}k",
-            "-ac", str(channels),
-            output_file
-        ])
+            channels = 2 if stereo else 1
 
-        # Run the command and wait for it to complete
-        result = subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
+            if srt_file is not None:
+                vf_arg = "scale='min(3840,iw)':-2"
+            else:
+                vf_arg = f"scale='min(3840,iw)':-2,subtitles={srt_file}"
 
-        # Check if the process was successful
-        if result.returncode != 0:
-            log.error("FFMPEG failed with the following error:")
-            log.error(result.stderr)
+            command.extend([
+                "-y", "-i", str(input_path),
+                "-vf", vf_arg,
+                "-c:v", "libx264",
+                "-preset", ffmpeg_preset,
+                "-profile:v", "high",
+                "-level", "4.2",
+                "-pix_fmt", "yuv420p",
+                "-crf", str(constant_rate_factor),
+                "-movflags", "+faststart",
+                "-c:a", "aac",
+                "-b:a", f"{audio_bitrate}k",
+                "-ac", str(channels),
+                str(output_path)
+            ])
+
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+
+            if result.returncode != 0:
+                log.error("FFMPEG failed with error:")
+                log.error(result.stderr)
+                return False
+
+            log.info("FFMPEG completed successfully.")
+            return True
+
+        except Exception as e:
+            log.error(f"Local encode failed: {e}")
+            logging.exception(e)
             return False
 
-        log.info("FFMPEG completed successfully!")
-        return True
+    # If a remote server is provided, try it first
+    if server_url:
+        try:
+            log.info(f"Submitting job to remote server: {server_url}")
 
-    except Exception as e:
-        log.error(f"An error occurred: {e}")
-        logging.exception(e)
-        return False
+            files = {"input_file": open(input_path, "rb")}
+            if srt_file and Path(srt_file).exists():
+                files["srt_file"] = open(srt_file, "rb")
+
+            payload = {
+                "ffmpeg_preset": ffmpeg_preset,
+                "constant_rate_factor": constant_rate_factor,
+                "stereo": stereo,
+                "audio_bitrate": audio_bitrate,
+            }
+
+            if input_format is not None:
+                payload['input_format'] = input_format
+
+            response = requests.post(f"{server_url}/encode/start", files=files, data={"options": json.dumps(payload)}, timeout=15)
+            for f in files.values():
+                f.close()
+
+            if response.status_code != 200:
+                log.warn(f"Server returned {response.status_code}, falling back to local.")
+                return _run_local_encode()
+
+            ticket = response.json()
+            ticket_id = ticket.get("ticket_id")
+            if not ticket_id:
+                log.warn("No ticket_id in response; falling back to local encoding.")
+                return _run_local_encode()
+
+            # Poll every 30s
+            while True:
+                time.sleep(30)
+                status_resp = requests.get(f"{server_url}/encode/status/{ticket_id}", timeout=10)
+                if status_resp.status_code != 200:
+                    log.warn("Status check failed; falling back to local.")
+                    return _run_local_encode()
+
+                status = status_resp.json().get("status")
+                log.info(f"Ticket {ticket_id} status: {status}")
+                if status == "done":
+                    # Retrieve file
+                    result = requests.get(f"{server_url}/encode/result/{ticket_id}", timeout=60)
+                    if result.status_code == 200:
+                        with open(output_path, "wb") as f:
+                            f.write(result.content)
+                        log.info("Downloaded encoded file successfully.")
+                        return True
+                    else:
+                        log.error("Failed to download result file; falling back to local.")
+                        return _run_local_encode()
+                elif status == "failed":
+                    log.error("Remote encoding failed; falling back to local.")
+                    return _run_local_encode()
+                # otherwise, "queued" or "processing" — continue waiting
+
+        except Exception as e:
+            log.warn(f"Remote encoding attempt failed: {e}")
+            logging.exception(e)
+            # Fallback to local
+            return _run_local_encode()
+
+    # Default to local encoding
+    return _run_local_encode()
 
 
 def burn_subtitles_to_video(input_file, srt_file, output_file, offset:int = 0, input_format='mp4',

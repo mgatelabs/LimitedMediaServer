@@ -103,16 +103,16 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
 
         result.append(
             plugin_select_arg('Filter', 'filter', '*', filter_values, "When not *, only Processors that match will execute.",
-                              'book'))
+                              'book', adv='Y'))
 
         result.append(
             plugin_select_arg('Exclude', 'exclude', '*', exclude_values, "Choose a processor to not process.",
-                              'book'))
+                              'book', adv='Y'))
 
         result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
                                         plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
                                         "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
-                                        'com'))
+                                        'com', adv='Y'))
 
         result.append(plugin_long_string_arg('Headers', 'headers',
                                              'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.',
@@ -121,7 +121,7 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
         result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
                                         plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
                                         "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
-                                        'com'))
+                                        'com', adv='Y'))
 
         return result
 
