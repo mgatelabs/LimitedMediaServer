@@ -1,12 +1,14 @@
+import io
 import json
 import logging
 import os
 import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from math import floor
+from datetime import datetime
+from math import floor, ceil
 
-from flask import Blueprint, request, current_app
+from flask import Blueprint, request, current_app, send_file
 from sqlalchemy.orm import sessionmaker, Session
 
 from auth_utils import shall_authenticate_user, feature_required, feature_required_silent, get_username, get_uid, \
@@ -27,10 +29,8 @@ process_blueprint = Blueprint('process', __name__)
 
 # Initialize TaskManager
 global task_manager, worker_queue_number
-task_manager = TaskManager()
-
-# One instance
 key_lock_manager = KeyLockManager()
+task_manager = TaskManager(key_lock_manager=key_lock_manager)
 
 # Initialize ThreadPoolExecutor with a maximum # of worker threads
 executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
@@ -38,56 +38,43 @@ executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 def close_queue_session(my_task_manager: TaskManager, task_wrapper: TaskWrapper, session: Session,
                         worker_status: TaskWorker):
     try:
-        worker_status.position = 9
         my_task_manager.task_done_queue(task_wrapper, worker_status)
-        worker_status.position = 10
         task_wrapper.mark_end()
-        worker_status.position = 11
         if session is not None:
-            worker_status.position = 12
             session.close()
     except Exception as inst:
-        worker_status.position = 13
         logging.error(inst)
-        worker_status.position = 14
         task_wrapper.add_log(str(inst))
-        worker_status.position = 15
-    worker_status.position = 20
+    worker_status.status = TaskWorker.STATUS_IDLE
+    worker_status.job = 0
+    worker_status.last_seen = time.time()
 
 
 # Worker function to consume tasks
 def queue_worker(my_task_manager: TaskManager, app, index: int):
     worker_status = my_task_manager.add_worker(index)
+    idle_wait = 1
 
     while True:
-        worker_status.wait_stamp = 0
-        worker_status.position = 1
+        worker_status.status = TaskWorker.STATUS_IDLE
+        worker_status.last_seen = time.time()
         task_wrapper = my_task_manager.get_task_queue()
         if task_wrapper is None:
-            worker_status.position = 2
-            time.sleep(3)
-            continue  # Sentinel to exit
-
-        lock_key = task_wrapper.get_locking_key()
-
-        if not key_lock_manager.acquire(lock_key):
-            task_wrapper.trace('Waiting')
-            my_task_manager.return_task_to_queue(task_wrapper)
-            time.sleep(3)
+            time.sleep(idle_wait)
+            idle_wait = min(idle_wait + 1, 10)
             continue
 
+        idle_wait = 2
         worker_status.job = task_wrapper.task_id
+        worker_status.status = TaskWorker.STATUS_RUNNING
         session = None
         try:
-            worker_status.position = 3
             task_wrapper.trace('Before Context')
             with app.app_context():
                 task_wrapper.trace('In Context')
-                worker_status.position = 4
                 SessionMak = sessionmaker(bind=db.engine)
                 session = SessionMak()
 
-                # Create a new session for the thread
                 task_wrapper.trace('Before Local Session')
                 task_wrapper.mark_start()
                 task_wrapper.always('Executing Task')
@@ -99,22 +86,16 @@ def queue_worker(my_task_manager: TaskManager, app, index: int):
                 task_wrapper.set_finished(True)
                 task_wrapper.always('Finished Task')
         except Exception as inst:
-            worker_status.position = 5
             logging.error(inst)
             task_wrapper.add_log(str(inst))
             ex_json = get_exception()
-            worker_status.position = 6
             task_wrapper.set_finished(True)
             task_wrapper.set_failure(True)
             task_wrapper.error(
                 'Exception: ' + ex_json['message'] + ' - ' + ex_json['file'] + '[' + ex_json['line'] + ']')
         finally:
-            key_lock_manager.release(lock_key)
-            worker_status.position = 70
             close_queue_session(my_task_manager, task_wrapper, session, worker_status)
-            worker_status.position = 72
-            worker_status.wait_stamp = time.time()
-    worker_status.online = False
+    worker_status.status = TaskWorker.STATUS_DEAD
 
 
 def init_processors(app):
@@ -318,12 +299,12 @@ def get_all_task_status_extra_method(user_detail, extra_method_call):
                 init_processor(app)
 
     removed_tasks = 0
-    active_only = False
 
+    is_active_mode = False
     if is_blank(extra_method_call) or extra_method_call == 'NONE':
         pass
     elif extra_method_call == 'ACTIVE':
-        active_only = True
+        is_active_mode = True
     else:
         if get_user_features(user_detail) & MANAGE_PROCESSES != MANAGE_PROCESSES:
             return generate_failure_response('Not allowed to use this method', 401, msg_auth_feature_required())
@@ -337,78 +318,127 @@ def get_all_task_status_extra_method(user_detail, extra_method_call):
 
     result = []
 
-    total_items = len(tasks)
+    if is_active_mode:
+        for task in tasks:
+            if not task:
+                break
 
-    pages = floor(total_items / page_size)
-    # Check for overflow
-    if total_items % page_size > 0:
-        pages = pages + 1
+            if task.is_finished or task.is_waiting:
+                continue
 
-    # Sanity
+            result.append({
+                "id": task.task_id,
+                "name": task.name,
+                "description": task.description,
+                "progress": task.get_progress(),
+                "percent": task.percent,
+                "finished": task.is_finished,
+                "waiting": task.is_waiting,
+                "failure": task.is_failure,
+                "warning": task.is_warning,
+                "worked": task.is_worked,
+                "logging": task.logging_level,
+                "log": task.log_entries[-2:],
+                "delay_duration": task.duration_delayed,
+                "running_duration": task.duration_running,
+                "total_duration": task.duration_total,
+                "init_timestamp": task.init_timestamp,
+                "start_timestamp": task.start_timestamp,
+                "end_timestamp": task.end_timestamp,
+                "book_id": task.ref_book_id,
+                "folder_id": task.ref_folder_id,
+                "folder_img": task.ref_folder_preview,
+                "folder_name": task.ref_folder_name,
+                "priority": task.priority,
+                "weight": task.weight
+            })
 
-    if page_size < 0:
-        page_size = 20
-    elif page_size > 150:
-        page_size = 150
+        total_items = len(result)
 
-    if pages == 1:
-        page = 0
-    elif page < 0:
-        page = 0
-    elif pages > 0 and page >= page_size:
-        page = page_size - 1
-    elif pages == 0:
-        page = 0
+        msg = None
+        if removed_tasks == 0:
+            msg = msg_found_x_results(len(result))
+        else:
+            msg = msg_found_x_results_removed_y(len(result), removed_tasks)
 
-    start = page * page_size
-    end = start + page_size
-
-    for task in tasks[start:end]:
-        if not task:
-            break
-
-        if active_only and (task.is_finished or task.is_waiting):
-            continue
-
-        result.append({
-            "id": task.task_id,
-            "name": task.name,
-            "description": task.description,
-            "progress": task.progress,
-            "percent": task.percent,
-            "finished": task.is_finished,
-            "waiting": task.is_waiting,
-            "failure": task.is_failure,
-            "warning": task.is_warning,
-            "worked": task.is_worked,
-            "logging": task.logging_level,
-            "log": task.log_entries[-2:],
-            "delay_duration": task.duration_delayed,
-            "running_duration": task.duration_running,
-            "total_duration": task.duration_total,
-            "init_timestamp": task.init_timestamp,
-            "start_timestamp": task.start_timestamp,
-            "end_timestamp": task.end_timestamp,
-            "book_id": task.ref_book_id,
-            "folder_id": task.ref_folder_id,
-            "folder_img": task.ref_folder_preview,
-            "priority": task.priority,
-            "weight": task.weight
-        })
-
-    msg = None
-    if removed_tasks == 0:
-        msg = msg_found_x_results(len(tasks))
+        return generate_success_response('', {'page': page,
+                                              'pages': 1,
+                                              'total': total_items,
+                                              'tasks': result,
+                                              'weight': task_manager.get_weight(),
+                                              'workers': task_manager.get_worker_status()},
+                                         messages=[msg])
     else:
-        msg = msg_found_x_results_removed_y(len(tasks), removed_tasks)
+        total_items = len(tasks)
 
-    return generate_success_response('', {'page': page,
-                                          'pages': pages,
-                                          'total': total_items,
-                                          'tasks': result,
-                                          'weight': task_manager.get_weight(),
-                                          'workers': task_manager.get_worker_status()},
-                                     messages=[msg])
+        pages = floor(total_items / page_size)
+        # Check for overflow
+        if total_items % page_size > 0:
+            pages = pages + 1
+
+        # Sanity
+
+        if page_size < 0:
+            page_size = 20
+        elif page_size > 150:
+            page_size = 150
+
+        if pages == 1:
+            page = 0
+        elif page < 0:
+            page = 0
+        elif pages > 0 and page >= page_size:
+            page = page_size - 1
+        elif pages == 0:
+            page = 0
+
+        start = page * page_size
+        end = start + page_size
+
+        for task in tasks[start:end]:
+            if not task:
+                break
+
+            result.append({
+                "id": task.task_id,
+                "name": task.name,
+                "description": task.description,
+                "progress": task.get_progress(),
+                "percent": task.percent,
+                "finished": task.is_finished,
+                "waiting": task.is_waiting,
+                "failure": task.is_failure,
+                "warning": task.is_warning,
+                "worked": task.is_worked,
+                "logging": task.logging_level,
+                "log": task.log_entries[-2:],
+                "delay_duration": task.duration_delayed,
+                "running_duration": task.duration_running,
+                "total_duration": task.duration_total,
+                "init_timestamp": task.init_timestamp,
+                "start_timestamp": task.start_timestamp,
+                "end_timestamp": task.end_timestamp,
+                "book_id": task.ref_book_id,
+                "folder_id": task.ref_folder_id,
+                "folder_name": task.ref_folder_name,
+                "folder_img": task.ref_folder_preview,
+                "priority": task.priority,
+                "weight": task.weight
+            })
+
+        msg = None
+        if removed_tasks == 0:
+            msg = msg_found_x_results(len(tasks))
+        else:
+            msg = msg_found_x_results_removed_y(len(tasks), removed_tasks)
+
+        return generate_success_response('', {'page': page,
+                                              'pages': pages,
+                                              'total': total_items,
+                                              'tasks': result,
+                                              'weight': task_manager.get_weight(),
+                                              'workers': task_manager.get_worker_status()},
+                                         messages=[msg])
 
 
 # REST endpoint to get task status
@@ -420,11 +450,39 @@ def get_task_status(task_id):
     task = task_manager.get_task_by_id(task_id)
 
     if task is not None:
+        log_page_size = request.form.get('log_page_size', '0')
+        log_page = request.form.get('log_page', '0')
+
+        include_files = clean_string(request.form.get('include_files', '0')) == '1'
+
+        try:
+            log_page_size = max(0, int(log_page_size))
+        except (ValueError, TypeError):
+            log_page_size = 0
+
+        try:
+            log_page = max(0, int(log_page))
+        except (ValueError, TypeError):
+            log_page = 0
+
+        all_logs = task.log_entries
+        total_logs = len(all_logs)
+
+        if log_page_size > 0:
+            log_pages = ceil(total_logs / log_page_size)
+            log_page = min(log_page, log_pages - 1) if log_pages > 0 else 0
+            start = log_page * log_page_size
+            paged_log = all_logs[start:start + log_page_size]
+        else:
+            log_pages = 1
+            log_page = 0
+            paged_log = all_logs
+
         status = {
             "id": task.task_id,
             "name": task.name,
             "description": task.description,
-            "progress": task.progress,
+            "progress": task.get_progress(),
             "percent": task.percent,
             "finished": task.is_finished,
             "waiting": task.is_waiting,
@@ -432,7 +490,11 @@ def get_task_status(task_id):
             "warning": task.is_warning,
             "worked": task.is_worked,
             "logging": task.logging_level,
-            "log": task.log_entries,
+            "log": paged_log,
+            "log_total": total_logs,
+            "log_pages": log_pages,
+            "log_page": log_page,
+            "log_page_size": log_page_size,
             "delay_duration": task.duration_delayed,
             "running_duration": task.duration_running,
             "total_duration": task.duration_total,
@@ -442,11 +504,82 @@ def get_task_status(task_id):
             "book_id": task.ref_book_id,
             "folder_id": task.ref_folder_id,
             "priority": task.priority,
-            "weight": task.weight
+            "weight": task.weight,
+            "files": []
         }
+
+        if include_files:
+            temp_folder = task.temp_folder_path
+            if temp_folder is not None and os.path.isdir(temp_folder):
+                files = []
+                for entry in sorted(os.scandir(temp_folder), key=lambda e: e.name):
+                    if entry.is_file():
+                        try:
+                            files.append({
+                                "name": entry.name,
+                                "size": entry.stat().st_size
+                            })
+                        except OSError:
+                            continue
+                status["files"] = files
+
         return generate_success_response('', {'task': status})
 
     return generate_failure_response("Task not found", 404, messages=[msg_action_failed_missing()])
+
+
+SEVERITY_NAMES = {0: 'TRACE', 10: 'DEBUG', 20: 'INFO', 30: 'WARN', 40: 'ERROR', 50: 'CRIT', 100: 'ALWAYS'}
+
+
+@process_blueprint.route('/log/download/<int:task_id>', methods=['POST'])
+@feature_required_silent(process_blueprint, VIEW_PROCESSES)
+def download_task_log(task_id):
+    global task_manager
+
+    task = task_manager.get_task_by_id(task_id)
+    if task is None:
+        return generate_failure_response("Task not found", 404, messages=[msg_action_failed_missing()])
+
+    fmt = clean_string(request.form.get('format', 'md')).lower()
+    if fmt not in ('md', 'json'):
+        fmt = 'md'
+
+    safe_name = ''.join(c if c.isalnum() or c in ('-', '_') else '_' for c in task.name)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    filename = f'{safe_name}_{timestamp}.{fmt}'
+
+    entries = task.log_entries
+
+    if fmt == 'json':
+        payload = {
+            'id': task.task_id,
+            'name': task.name,
+            'description': task.description,
+            'log': entries,
+        }
+        data = json.dumps(payload, indent=2).encode('utf-8')
+        mimetype = 'application/json'
+    else:
+        lines = [
+            f'# {task.name}',
+            f'**Description:** {task.description}',
+            f'**Task ID:** {task.task_id}',
+            '',
+            '| Time | Level | Message |',
+            '|---|---|---|',
+        ]
+        for entry in entries:
+            level = SEVERITY_NAMES.get(entry.get('s', 20), 'INFO')
+            time_str = entry.get('time', '')
+            text = entry.get('text', '').replace('|', '\\|')
+            lines.append(f'| {time_str} | {level} | {text} |')
+        data = '\n'.join(lines).encode('utf-8')
+        mimetype = 'text/markdown'
+
+    buf = io.BytesIO(data)
+    buf.seek(0)
+    return send_file(buf, mimetype=mimetype, as_attachment=True, download_name=filename)
+
 
 
 @process_blueprint.route('/cancel/<int:task_id>', methods=['POST'])
@@ -490,6 +623,18 @@ def change_task_logging(task_id):
         return generate_success_response("Task level updated", messages=[msg_operation_complete()])
 
     return generate_failure_response("Task not found", 404, messages=[msg_action_failed_missing()])
+
+
+@process_blueprint.route('/purge/<int:task_id>', methods=['DELETE'])
+@feature_required(process_blueprint, MANAGE_PROCESSES)
+def purge_task(user_details, task_id: int):
+    global task_manager
+
+    if task_manager.purge_task(task_id):
+        return generate_success_response('Task removed', messages=[msg_operation_complete()])
+
+    return generate_failure_response(f'Task {task_id} not found or still active', 404,
+                                     messages=[msg_action_failed_missing()])
 
 
 @process_blueprint.route('/promote/<int:task_id>', methods=['POST'])

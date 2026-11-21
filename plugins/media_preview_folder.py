@@ -27,6 +27,19 @@ class MakePreviewsForFolderPlugin(ActionMediaFolderPlugin):
     """
     Task to update the previews for a specific folder.
     """
+    AI_QUICK_DESCRIPTION = ('Generates preview thumbnails for the files in one media folder. By '
+                            'default it only fills in previews that are missing; Force makes it '
+                            're-generate every file in the folder.')
+    AI_LONG_DESCRIPTION = (
+        'Creates a small preview image for media files in a single folder. Unless Force is Yes, '
+        'only files that currently have no preview are selected; with Force Yes, every file in '
+        'the folder is re-processed and any existing preview is overwritten. For each file the '
+        'preview is produced from the file type: videos get a frame captured by ffmpeg at the '
+        'Place position (a percentage of the duration, default 45%), MP3 files get their first '
+        'embedded cover art image, and PNG/JPEG/GIF images are simply shrunk. All previews are '
+        'stored as WEBP (256x256 for video and audio, 128px for images). Files whose type cannot '
+        'be handled are skipped with a warning. On success the file is marked as having a '
+        'preview; progress is reported and the database is committed every 100 files.')
 
     def __init__(self):
         super().__init__()
@@ -129,6 +142,20 @@ class MakePreviewsForAllPlugin(ActionMediaPlugin):
     """
     Task to update previews system-wide.
     """
+    AI_QUICK_DESCRIPTION = ('Generates preview thumbnails, system-wide, for every media file '
+                            'that is currently missing a preview. Existing previews are never '
+                            're-generated.')
+    AI_LONG_DESCRIPTION = (
+        'The server-wide version of preview generation. It queries the whole media library for '
+        'files that have no preview image and generates one for each, regardless of folder - '
+        'folders the invoking user cannot see are included, and per-file logging is suppressed '
+        'for those. There is no Force option: files that already have a preview are skipped, so '
+        'this is always a fill-in-missing pass. Preview sources follow the file type: a video '
+        'frame captured by ffmpeg at the Place position (a percentage of the duration, default '
+        '10%), the first embedded cover art for MP3 files, or a shrunk copy for PNG/JPEG/GIF '
+        'images. All previews are stored as WEBP (256x256 for video and audio, 128px for '
+        'images). Unhandleable files are skipped with a warning; each successful file is marked '
+        'as having a preview, with the database committed every 100 files.')
 
     def __init__(self):
         super().__init__()
@@ -218,6 +245,19 @@ class MakePreviewForFilePlugin(ActionMediaFilePlugin):
     """
     Task to update the previews for a specific file.
     """
+    AI_QUICK_DESCRIPTION = ('Generates (or re-generates) the preview thumbnail for a single '
+                            'media file, using ffmpeg frame capture for video, embedded cover '
+                            'art for MP3s, or a shrunk copy for images, stored as WEBP.')
+    AI_LONG_DESCRIPTION = (
+        'Creates the preview image for one specific file. The file is always processed even if a '
+        'preview already exists, so this is the right action to force-refresh or fix a single '
+        'preview. The preview depends on the file type: video files produce a frame captured by '
+        'ffmpeg at the Place position (a percentage of the duration, default 45%); MP3 files '
+        'have their first embedded cover art image extracted; PNG, JPEG, and GIF images are '
+        'shrunk to 128px. All previews are written as WEBP (256x256 for video and audio, 128px '
+        'for images). User access to the file is verified first, and an unhandleable file type '
+        'causes the task to fail; on success the file is marked as having a preview and the '
+        'change is committed.')
 
     def __init__(self):
         super().__init__()
@@ -308,6 +348,21 @@ class MakePreviewsForFilesPlugin(ActionMediaFilesPlugin):
     """
     Task to update the previews for a specific file.
     """
+    AI_QUICK_DESCRIPTION = ('Generates (or re-generates) preview thumbnails for a comma-'
+                            'separated list of media files, using ffmpeg frame capture for '
+                            'video, embedded cover art for MP3s, or a shrunk copy for images, '
+                            'stored as WEBP.')
+    AI_LONG_DESCRIPTION = (
+        'The multi-file version of preview generation. The File argument is a comma-separated '
+        'list of file ids; every listed file is processed, even if it already has a preview, so '
+        'this is the right action to force-refresh several previews in one task. User access to '
+        'each file is verified up front. The preview depends on the file type: video files '
+        'produce a frame captured by ffmpeg at the Place position (a percentage of the '
+        'duration, default 45%); MP3 files have their first embedded cover art image extracted; '
+        'PNG, JPEG, and GIF images are shrunk to 128px. All previews are written as WEBP '
+        '(256x256 for video and audio, 128px for images). Unhandleable files are skipped with a '
+        'warning; each successful file is marked as having a preview, with the database '
+        'committed every 100 files.')
 
     def __init__(self):
         super().__init__()
@@ -436,10 +491,12 @@ class MakeMediaPreviewJob(TaskWrapper):
                         for file in file_list:
                             media_file, media_folder = get_file_by_user(file, self.user, db_session)
                             self.ref_folder_id = media_folder.id
+                            self.ref_folder_name = media_folder.name if hasattr(media_folder, 'name') else str(media_folder.id)
                             self.ref_folder_preview = media_folder.preview == True
                     else:
                         media_file, media_folder = get_file_by_user(self.file_id, self.user, db_session)
                         self.ref_folder_id = media_folder.id
+                        self.ref_folder_name = media_folder.name if hasattr(media_folder, 'name') else str(media_folder.id)
                         self.ref_folder_preview = media_folder.preview == True
                 else:
                     # Make sure we have access

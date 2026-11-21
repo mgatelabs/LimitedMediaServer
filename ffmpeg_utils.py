@@ -1,11 +1,11 @@
-import logging
-import subprocess
 import json
-
-import requests
+import logging
+import random
+import subprocess
 import time
 from pathlib import Path
 
+from media_encoder_util import remote_encode
 from plugin_methods import plugin_select_arg, plugin_select_values
 from thread_utils import TaskWrapper, NoOpTaskWrapper
 
@@ -14,7 +14,8 @@ FFMPEG_PRESET = plugin_select_arg('Preset', 'ffmpeg_preset', 'medium', plugin_se
     'veryfast', 'veryfast', 'faster', 'faster', 'fast', 'fast', 'medium (default): Balanced between speed and quality.',
     'medium', 'slow', 'slow', 'slower', 'slower',
     'veryslow: Maximum compression; slowest but produces smaller files with high quality.', 'veryslow'),
-                                  'The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)', 'com')
+                                  'The presets prioritize encoding speed vs. compression efficiency (file size and quality). From fastest to slowest (and lowest to highest quality)',
+                                  'com')
 FFMPEG_PRESET_VALUES = ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower', 'veryslow']
 
 FFMPEG_CRF = plugin_select_arg('Constant Rate Factor', 'ffmpeg_crf', '23',
@@ -25,19 +26,40 @@ FFMPEG_CRF = plugin_select_arg('Constant Rate Factor', 'ffmpeg_crf', '23',
 FFMPEG_CRF_VALUES = ['18', '19', '20', '21', '22', '23', '24', '25']
 
 FFMPEG_AUDIO_BIT = plugin_select_arg('Audio Bit Rate', 'ffmpeg_abr', '128',
-                               plugin_select_values('64', '64', '80', '80', '96', '96', '112', '112',
-                                                    '128', '128', '160',
-                                                    '160', '192', '192'),
-                               'Key parameter for controlling the audio quality and file size of videos', 'com')
+                                     plugin_select_values('64', '64', '80', '80', '96', '96', '112', '112',
+                                                          '128', '128', '160',
+                                                          '160', '192', '192'),
+                                     'Key parameter for controlling the audio quality and file size of videos', 'com')
 
 FFMPEG_AUDIO_BIT_RATE_VALUES = ['64', '80', '96', '112', '128', '160', '192']
 
-
 FFMPEG_STEREO = plugin_select_arg('Mix-down', 'ffmpeg_mix', 'f',
-                               plugin_select_values('Stereo', 't', 'Mono', 'f'),
-                               'Key parameter for controlling the audio channels and file size of videos', 'com')
+                                  plugin_select_values('Stereo', 't', 'Mono', 'f'),
+                                  'Key parameter for controlling the audio channels and file size of videos', 'com')
 
 FFMPEG_STEREO_VALUES = ['f', 't']
+
+FFMPEG_RESOLUTION = plugin_select_arg('Max Resolution', 'ffmpeg_res', 'src',
+                                      plugin_select_values(
+                                          'Source (no resize)', 'src',
+                                          '4K (3840px wide)', '4k',
+                                          '2K (2048px wide)', '2k',
+                                          '1080p (1920px wide)', '1080',
+                                          '720p (1280px wide)', '720',
+                                          '320p (568px wide)', '320',
+                                      ),
+                                      'Limit the output resolution; Source keeps the original dimensions', 'com')
+
+FFMPEG_RESOLUTION_VALUES = ['src', '4k', '2k', '1080', '720', '320']
+
+_RESOLUTION_WIDTH = {'src': None, '4k': 3840, '2k': 2048, '1080': 1920, '720': 1280, '320': 568}
+
+
+def _build_scale_filter(resolution: str) -> str:
+    width = _RESOLUTION_WIDTH.get(resolution.lower())
+    if width is None:
+        return "scale='iw':-2"
+    return f"scale='min({width},iw)':-2"
 
 
 def get_ffmpeg_f_argument_from_mimetype(mime: str) -> str:
@@ -59,16 +81,17 @@ def get_ffmpeg_f_argument_from_mimetype(mime: str) -> str:
 
 
 def encode_video(
-    input_file,
-    output_file,
-    input_format=None,
-    ffmpeg_preset: str = 'medium',
-    constant_rate_factor=23,
-    stereo=True,
-    audio_bitrate=128,
-    server_url: str | None = None,
-    srt_file: str | None = None,
-    log: TaskWrapper= NoOpTaskWrapper()
+        input_file,
+        output_file,
+        input_format=None,
+        ffmpeg_preset: str = 'medium',
+        constant_rate_factor=23,
+        stereo=True,
+        audio_bitrate=128,
+        srt_file: str | None = None,
+        resolution: str = 'src',
+        local_only: bool = False,
+        log: TaskWrapper = NoOpTaskWrapper()
 ) -> bool:
     log = log or logging.getLogger(__name__)
     input_path = Path(input_file)
@@ -77,6 +100,7 @@ def encode_video(
     # --- Nested helper for local fallback ---
     def _run_local_encode():
         try:
+            log.weight = 70
             log.info("Starting local ffmpeg encoding...")
             command = ["ffmpeg"]
 
@@ -86,9 +110,9 @@ def encode_video(
             channels = 2 if stereo else 1
 
             if srt_file is not None:
-                vf_arg = "scale='min(3840,iw)':-2"
+                vf_arg = f"{_build_scale_filter(resolution)},subtitles={srt_file}"
             else:
-                vf_arg = f"scale='min(3840,iw)':-2,subtitles={srt_file}"
+                vf_arg = _build_scale_filter(resolution)
 
             command.extend([
                 "-y", "-i", str(input_path),
@@ -126,83 +150,28 @@ def encode_video(
             logging.exception(e)
             return False
 
-    # If a remote server is provided, try it first
-    if server_url:
-        try:
-            log.info(f"Submitting job to remote server: {server_url}")
+    if local_only:
+        return _run_local_encode()
 
-            files = {"input_file": open(input_path, "rb")}
-            if srt_file and Path(srt_file).exists():
-                files["srt_file"] = open(srt_file, "rb")
+    # Try remote encoder up to 5 times with 5-8 second delays, then fall back to local
+    max_retries = 5
+    for attempt in range(max_retries):
+        if remote_encode(input_path, output_path, ffmpeg_preset, stereo, audio_bitrate,
+                         srt_file=srt_file, resolution=resolution, log=log):
+            return True
+        if attempt < max_retries - 1:
+            delay = random.randint(5, 8)
+            log.warn(f"Remote encode attempt {attempt + 1} failed; retrying in {delay} seconds...")
+            time.sleep(delay)
 
-            payload = {
-                "ffmpeg_preset": ffmpeg_preset,
-                "constant_rate_factor": constant_rate_factor,
-                "stereo": stereo,
-                "audio_bitrate": audio_bitrate,
-            }
+    log.warn("Remote encode failed after 5 attempts; falling back to local.")
 
-            if input_format is not None:
-                payload['input_format'] = input_format
-
-            response = requests.post(f"{server_url}/encode/start", files=files, data={"options": json.dumps(payload)}, timeout=180)
-            for f in files.values():
-                f.close()
-
-            if response.status_code != 200:
-                log.warn(f"Server returned {response.status_code}, falling back to local.")
-                return _run_local_encode()
-
-            ticket = response.json()
-            ticket_id = ticket.get("ticket_id")
-            if not ticket_id:
-                log.warn("No ticket_id in response; falling back to local encoding.")
-                return _run_local_encode()
-
-            # Poll every 12s
-            while True:
-                time.sleep(12)
-                status_resp = requests.get(f"{server_url}/encode/status/{ticket_id}", timeout=180)
-                if status_resp.status_code != 200:
-                    log.warn("Status check failed; falling back to local.")
-                    return _run_local_encode()
-                data_payload = status_resp.json()
-                status = data_payload.get("status")
-                progress = data_payload.get("progress")
-                log.info(f"Ticket {ticket_id} status: {status}")
-                if status == "done":
-                    log.update_percent(100)
-                    # Retrieve file
-                    result = requests.get(f"{server_url}/encode/result/{ticket_id}", timeout=180)
-                    if result.status_code == 200:
-                        with open(output_path, "wb") as f:
-                            f.write(result.content)
-                        log.info("Downloaded encoded file successfully.")
-                        return True
-                    else:
-                        log.error("Failed to download result file; falling back to local.")
-                        return _run_local_encode()
-                elif status == "failed":
-                    log.error("Remote encoding failed; falling back to local.")
-                    return _run_local_encode()
-                elif progress:
-                   log.update_percent(float(progress))
-
-                # otherwise, "queued" or "processing" — continue waiting
-
-        except Exception as e:
-            log.warn(f"Remote encoding attempt failed: {e}")
-            logging.exception(e)
-            # Fallback to local
-            return _run_local_encode()
-
-    # Default to local encoding
     return _run_local_encode()
 
 
-def burn_subtitles_to_video(input_file, srt_file, output_file, offset:int = 0, input_format='mp4',
+def burn_subtitles_to_video(input_file, srt_file, output_file, offset: int = 0, input_format='mp4',
                             ffmpeg_preset: str = 'medium', constant_rate_factor: int = 23, stereo=True,
-                            audio_bitrate=128, log: TaskWrapper = NoOpTaskWrapper()):
+                            audio_bitrate=128, resolution: str = 'src', log: TaskWrapper = NoOpTaskWrapper()):
     try:
 
         # Construct the FFMPEG command
@@ -218,7 +187,7 @@ def burn_subtitles_to_video(input_file, srt_file, output_file, offset:int = 0, i
 
         command.extend([
             "-y", "-i", input_file,
-            "-vf", f"scale='min(3840,iw)':-2,subtitles={srt_file}",
+            "-vf", f"{_build_scale_filter(resolution)},subtitles={srt_file}",
             "-c:v", "libx264",
             "-preset", ffmpeg_preset,
             "-profile:v", "high",
@@ -254,10 +223,12 @@ def burn_subtitles_to_video(input_file, srt_file, output_file, offset:int = 0, i
         logging.exception(e)
         return False
 
+
 # Utilities
 
 def get_video_duration(input_file, input_format: str):
-    result = subprocess.run(['ffmpeg', "-f", input_format, '-i', input_file], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    result = subprocess.run(['ffmpeg', "-f", input_format, '-i', input_file], stderr=subprocess.PIPE,
+                            stdout=subprocess.PIPE)
     # Extract duration from ffmpeg output
     duration_line = [line for line in result.stderr.decode().split('\n') if 'Duration' in line]
     if not duration_line:
@@ -273,10 +244,47 @@ def generate_video_thumbnail(input_file, input_format: str, output_file, percent
     # Calculate the time at the specified percentage
     time = duration * percentage / 100
     # Extract the frame at the calculated time and save as PNG
-    subprocess.run(['ffmpeg', '-ss', str(time), "-f", input_format, '-i', input_file, '-frames:v', '1', output_file, '-y'], check=True)
+    subprocess.run(
+        ['ffmpeg', '-ss', str(time), "-f", input_format, '-i', input_file, '-frames:v', '1', output_file, '-y'],
+        check=True)
 
 
-def get_media_info(file_path: str, logger: TaskWrapper):
+def probe_media(file_path: str, log: TaskWrapper) -> dict | None:
+    """
+    Runs ffprobe on a file and returns the raw JSON structure (streams + format).
+    Returns None if the probe fails.
+    """
+    cmd = [
+        "ffprobe",
+        "-v", "error",
+        "-print_format", "json",
+        "-show_streams",
+        "-show_format",
+        str(file_path)
+    ]
+
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except Exception as e:
+        log.error(f"ffprobe could not be executed: {e}")
+        return None
+
+    if result.returncode != 0:
+        log.error(f"ffprobe failed for {file_path}: {result.stderr.strip()}")
+        return None
+
+    try:
+        metadata = json.loads(result.stdout)
+        if not metadata.get("streams"):
+            log.error(f"No streams found in {file_path}")
+            return None
+        return metadata
+    except json.JSONDecodeError:
+        log.error(f"Could not decode ffprobe output for {file_path}")
+        return None
+
+
+def get_media_info(file_path: str, logger: TaskWrapper, print_details: bool = True) -> dict:
     cmd = [
         "ffprobe",
         "-v", "error",
@@ -325,7 +333,30 @@ def get_media_info(file_path: str, logger: TaskWrapper):
 
             info["streams"].append(stream_info)
 
-        logger.info(json.dumps(info))
+        if print_details:
+            md_lines = [
+                "## Media Info",
+                "",
+                f"| Property | Value |",
+                f"|---|---|",
+                f"| Format | `{info['format']}` |",
+                f"| Duration | `{info['duration']}` |",
+                f"| Bit Rate | `{info['bit_rate']}` |",
+                "",
+                "### Streams",
+                "",
+            ]
+
+            for i, stream in enumerate(info["streams"], 1):
+                md_lines.append(f"#### Stream {i} ({stream['type'].capitalize()})")
+                md_lines.append("")
+                md_lines.append("| Property | Value |")
+                md_lines.append("|---|---|")
+                for key, val in stream.items():
+                    md_lines.append(f"| `{key}` | `{val}` |")
+                md_lines.append("")
+
+            logger.info("\n".join(md_lines), _markdown=True)
 
         return info
 

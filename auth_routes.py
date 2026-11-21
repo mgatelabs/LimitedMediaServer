@@ -38,7 +38,7 @@ def generate_auth_result(user: User):
     expiration_time = datetime.now(timezone.utc) + timedelta(minutes=timeout)
 
     token = jwt.encode({'uid': user.id, 'username': user.username, 'limits': limits, 'features': features,
-                        'exp': expiration_time},
+                        'gid': user.user_group_id, 'exp': expiration_time},
                        current_app.config[PROPERTY_SERVER_SECRET_KEY], algorithm='HS256')
 
     response = make_response(generate_success_response('', {'token': token}))
@@ -179,7 +179,7 @@ def renew_request(user_details):
 
     token = jwt.encode(
         {'uid': user_details['uid'], 'username': user_details['username'], 'limits': limits, 'features': features,
-         'exp': expiration_time},
+         'gid': user_details.get('gid'), 'exp': expiration_time},
         current_app.config[PROPERTY_SERVER_SECRET_KEY], algorithm='HS256')
 
     response = make_response(generate_success_response('', {'token': token}, messages=[msg_operation_complete()]))

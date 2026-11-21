@@ -11,12 +11,12 @@ from flask_sqlalchemy.session import Session
 from db import Book
 from feature_flags import MANAGE_VOLUME
 from html_utils import has_valid_headers
-from plugin_methods import plugin_long_string_arg, plugin_select_arg, plugin_select_values, plugin_url_arg
+from plugin_methods import PLUGIN_VALUES_Y_N, plugin_long_string_arg, plugin_select_arg, plugin_select_values, plugin_url_arg
 from plugin_system import ActionBookSpecificPlugin, ActionBookGeneralPlugin
 from plugins.book_update_headers import UpdateVolumeHeader
 from plugins.book_volume_processing import VolumeProcessor
 from text_utils import is_not_blank, is_blank
-from thread_utils import TaskWrapper
+from thread_utils import RunReport, TaskWrapper
 from volume_queries import find_book_by_id
 from volume_utils import parse_curl_headers
 
@@ -69,6 +69,19 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
     """
     This is used to download new book content from the Internet (All Books).
     """
+    AI_QUICK_DESCRIPTION = ('Downloads new chapters for every active book that has not been '
+                            'updated in the last 7 days, using each book\'s source-site processor.')
+    AI_LONG_DESCRIPTION = (
+        'Batch update of book content: for every active book whose last update is more than '
+        '7 days old, a download job is queued that asks the book\'s processor (source site) for '
+        'new chapters and stores them in the book folder in the configured storage format. '
+        'Filter (default All) restricts the run to one processor; Exclude (default None) removes '
+        'one processor from the run; Book Scope chooses between All Books / Local Books (default) '
+        '/ Remote Books. Cleaning=New Chapters (default) only cleans newly downloaded chapters, '
+        'Cleaning=All Chapters also purges invalid or sub-10kb files from existing chapters. '
+        'Headers is an optional cURL (Bash) string used for sites behind anti-bot protection; '
+        'the All and Local scopes require valid headers. Books are interleaved across processors '
+        'so no single site dominates. This action only runs on a Linux server.')
 
     def __init__(self):
         super().__init__()
@@ -119,6 +132,11 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
             plugin_select_arg('Exclude', 'exclude', '*', exclude_values, "Choose a processor to not process.",
                               'book', adv='Y'))
 
+        result.append(plugin_select_arg('Book Scope', 'book_scope', 'l',
+                                        plugin_select_values('All Books', 'a', 'Local Books', 'l', 'Remote Books', 'r'),
+                                        'All Books processes every book and requires headers.  Local Books skips remote processors and requires headers.  Remote Books only processes remote processors and requires no headers.',
+                                        'com', adv='N'))
+
         result.append(plugin_select_arg('Cleaning', 'cleaning', 'n',
                                         plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
                                         "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
@@ -147,9 +165,14 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
         if 'cleaning' not in args or args['cleaning'] is None or args['cleaning'] == '':
             results.append('cleaning is required')
 
+        if 'book_scope' not in args or args['book_scope'] is None or args['book_scope'] not in ['a', 'l', 'r']:
+            results.append('book_scope is required')
+
+        requires_headers = args.get('book_scope') in ['a', 'l']
+
         if 'headers' not in args or is_blank(args['headers']):
             args['headers'] = None
-            if not has_valid_headers():
+            if requires_headers and not has_valid_headers():
                 results.append('headers are required to continue')
         elif not args['headers'].startswith('curl'):
             results.append('headers must be a curl bash command')
@@ -187,6 +210,7 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
 
         processor_filter = args['filter']
         exclude_filter = args['exclude']
+        book_scope = args.get('book_scope', 'a')
 
         for book in interleaved_books:
             if (processor_filter == '*' or processor_filter == book.processor) and (
@@ -197,6 +221,10 @@ class UpdateAllBooksPlugin(ActionBookGeneralPlugin):
                 if book.processor in processor_lookup:
                     processor = processor_lookup[book.processor]
                     if not processor.is_ready():
+                        continue
+                    if book_scope == 'l' and processor.is_remote_process():
+                        continue
+                    if book_scope == 'r' and not processor.is_remote_process():
                         continue
 
                 if processor is None:
@@ -214,6 +242,16 @@ class UpdateSingleBookPlugin(ActionBookSpecificPlugin):
     """
     This is used to download new book content from the Internet (Single Book).
     """
+    AI_QUICK_DESCRIPTION = ('Downloads new chapters for one active book from its source site '
+                            'via that book\'s processor.')
+    AI_LONG_DESCRIPTION = (
+        'Single-book update: queues a download job that asks the book\'s processor (source '
+        'site) for new chapters and stores them in the book folder in the configured storage '
+        'format. Cleaning=New Chapters (default) only cleans newly downloaded chapters; '
+        'Cleaning=All Chapters also purges invalid or sub-10kb files from existing chapters. '
+        'Headers is an optional cURL (Bash) string for sites behind anti-bot protection: when '
+        'the book uses a local (non-remote) processor, valid headers are required or the book '
+        'is skipped with a warning. Book ID is required. This action only runs on a Linux server.')
 
     def __init__(self):
         super().__init__()
@@ -266,8 +304,6 @@ class UpdateSingleBookPlugin(ActionBookSpecificPlugin):
 
         if 'headers' not in args or is_blank(args['headers']):
             args['headers'] = None
-            if not has_valid_headers():
-                results.append('headers are required to continue')
         elif not args['headers'].startswith('curl'):
             results.append('headers must be a curl bash command')
         else:
@@ -300,12 +336,18 @@ class UpdateSingleBookPlugin(ActionBookSpecificPlugin):
 
                 processor = processor_for_id(self.processors, book.processor)
 
-                the_book = DownloadBookJob("GetBook", f'Updating: {book.name}', book.id, processor, self.processors,
-                                           self.book_storage_folder, self.book_storage_format, cleaning == 'a')
-                if len(results) == 0:
-                    return the_book
-                else:
-                    results.append(the_book)
+                if processor is not None:
+                    if processor.is_remote_process() or args['headers'] is not None or has_valid_headers():
+                        the_book = DownloadBookJob("GetBook", f'Updating: {book.name}', book.id, processor, self.processors,
+                                                   self.book_storage_folder, self.book_storage_format, cleaning == 'a')
+                        if len(results) == 0:
+                            return the_book
+                        else:
+                            results.append(the_book)
+                    else:
+                        report = RunReport("Skip Report", f'Skipping local book {book.name}')
+                        report.add_warn('Local book skipped: no valid headers.  Paste valid cURL headers and try again.')
+                        results.append(report)
 
         return results
 
@@ -319,6 +361,18 @@ class UpdateSingleBookChapterPlugin(ActionBookSpecificPlugin):
     """
     This is used to download new book content from the Internet (Single Book).
     """
+    AI_QUICK_DESCRIPTION = ('Downloads a single chapter, given its URL and chapter name, '
+                            'from the book\'s source site into the book folder.')
+    AI_LONG_DESCRIPTION = (
+        'Single-chapter update: queues a download job that fetches the chapter at the given '
+        'Chapter URL from the book\'s processor (source site) and stores it in the book folder '
+        'under the given chapter name. Both Chapter URL and Chapter Name are required; the '
+        'chapter name must match a valid chapter format such as Chapter-1, 0001, or 0001.5. '
+        'Allow Remote (default No) controls whether books that need remote processing are '
+        'skipped. Cleaning=New Chapters (default) only cleans newly downloaded chapters; '
+        'Cleaning=All Chapters also purges invalid or sub-10kb files from existing chapters. '
+        'Headers is an optional cURL (Bash) string for sites behind anti-bot protection. '
+        'Book ID is required. This action only runs on a Linux server.')
 
     def __init__(self):
         super().__init__()
@@ -360,6 +414,10 @@ class UpdateSingleBookChapterPlugin(ActionBookSpecificPlugin):
                                         plugin_select_values('New Chapters', 'n', 'All Chapters', 'a'),
                                         "Determines when content will be cleaned.  Normally only 'New Chapters' will be cleaned, but choose 'All Chapters' will cause it to purge new and existing chapters.  All files < 10kb or invalid will be removed.",
                                         'com'))
+
+        result.append(plugin_select_arg('Allow Remote', 'allow_remote', 'n', PLUGIN_VALUES_Y_N,
+                                        'When No, books that require remote processing will be skipped.',
+                                        'com', adv='Y'))
 
         result.append(plugin_long_string_arg('Headers', 'headers',
                                              'Open Chrome and access any site that is protected by a service you want to get around.  Open chrome dev tools (F12).  Refresh the page.  In the Developer tools network tab, click the page, the 1st item, right click, copy, Copy as cURL (Bash).  Paste that here.',
@@ -405,6 +463,7 @@ class UpdateSingleBookChapterPlugin(ActionBookSpecificPlugin):
 
         book_id = args['book_id']
         cleaning = (args['cleaning'] == 'a')
+        allow_remote = args.get('allow_remote') == 'y'
         results = []
         chapter_url = args['chapter_url']
         chapter_name = args['chapter_name']
@@ -418,19 +477,21 @@ class UpdateSingleBookChapterPlugin(ActionBookSpecificPlugin):
 
                 processor = processor_for_id(self.processors, book.processor)
 
-                the_book = DownloadBookChapterJob("GetBookChap", f'Updating: {book.name} {chapter_name}', chapter_url,
-                                                  chapter_name, book.id, processor, self.processors,
-                                                  self.book_storage_folder, self.book_storage_format, cleaning == 'a')
-                if len(results) == 0:
-                    return the_book
-                else:
-                    results.append(the_book)
+                if processor is not None and (allow_remote or not processor.is_remote_process()):
+                    the_book = DownloadBookChapterJob("GetBookChap", f'Updating: {book.name} {chapter_name}', chapter_url,
+                                                      chapter_name, book.id, processor, self.processors,
+                                                      self.book_storage_folder, self.book_storage_format,
+                                                      cleaning == 'a')
+                    if len(results) == 0:
+                        return the_book
+                    else:
+                        results.append(the_book)
 
         return results
 
 
 class DownloadBookJob(TaskWrapper):
-    def __init__(self, name, description, book_id, processor, processors, book_folder: str, storage_format: str = 'PNG',
+    def __init__(self, name, description, book_id, processor, processors, book_folder: str, storage_format: str = 'WEBP',
                  clean_all: bool = False):
         super().__init__(name, description)
         self.book_id = book_id
@@ -461,9 +522,9 @@ class DownloadBookJob(TaskWrapper):
 
 class DownloadBookChapterJob(TaskWrapper):
     def __init__(self, name, description, chapter_url: str, chapter_name: str, book_id, processor, processors,
-                 book_folder: str,
-                 storage_format: str = 'PNG',
-                 clean_all: bool = False):
+                  book_folder: str,
+                  storage_format: str = 'WEBP',
+                  clean_all: bool = False):
         super().__init__(name, description)
         self.book_id = book_id
         self.processor = processor

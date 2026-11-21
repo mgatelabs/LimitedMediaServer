@@ -4,7 +4,7 @@ import mimetypes
 import os.path
 import platform
 import shutil
-from datetime import datetime
+from datetime import date as date_type, datetime
 
 import requests
 from flask_sqlalchemy.session import Session
@@ -19,12 +19,25 @@ from plugin_methods import plugin_filename_arg, plugin_url_arg, plugin_select_ar
 from plugin_system import ActionMediaFolderPlugin
 from text_utils import is_blank
 from thread_utils import TaskWrapper
+from utility import random_sleep
 
 
 class DownloadFilePlugin(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
+    AI_QUICK_DESCRIPTION = ('Downloads a single file from a direct web URL and saves it into a '
+                            'media folder as a registered media file.')
+    AI_LONG_DESCRIPTION = (
+        'Fetches one file from a direct URL (not a video or audio streaming service) and adds '
+        'it to the chosen media folder. The download is written to a temporary file first - '
+        'using either the system HTTP downloader (default) or, on Linux, the Google Curl '
+        'downloader - then checked: Cloudflare anti-bot blocks and zero-length downloads are '
+        'rejected. On success the file is registered in the database with a guessed MIME type, '
+        'moved into storage on the chosen disk (Primary or Archive, default Primary), and the '
+        'folder\'s last-access date is bumped. Required arguments: URL, Filename, and Origin '
+        '(the referring page sent as the Origin header). Location and Method are optional with '
+        'defaults.')
 
     def __init__(self):
         super().__init__()
@@ -120,14 +133,19 @@ class DownloadFilePlugin(ActionMediaFolderPlugin):
 
 class DownloadFileJob(TaskWrapper):
     def __init__(self, name, description, folder_id, filename, url, origin, dest, meth, primary_path, archive_path,
-                 temp_path):
+                  temp_path, priority_override = 0):
         super().__init__(name, description)
         self.folder_id = folder_id
         self.filename = filename
-        self.url = url
-        self.origin = origin
+        url_list = [u.strip() for u in (url or '').split(';') if u.strip()]
+        origin_list = [o.strip() for o in (origin or '').split(';')] if origin else []
+        while len(origin_list) < len(url_list):
+            origin_list.append('')
+        self.url = ';'.join(url_list)
+        self.origin = ';'.join(origin_list)
         self.dest = dest
         self.meth = meth
+        self.priority = priority_override
         self.primary_path = primary_path
         self.archive_path = archive_path
         self.temp_path = temp_path
@@ -167,6 +185,7 @@ class DownloadFileJob(TaskWrapper):
             self.set_failure()
             return
 
+        self.ref_folder_name = source_row.name if hasattr(source_row, 'name') else str(source_row.id)
         self.ref_folder_preview = source_row.preview == True
 
         is_archive = self.dest == 'archive'
@@ -175,21 +194,52 @@ class DownloadFileJob(TaskWrapper):
 
             temp_file = os.path.join(temp_folder, 'download.text')
 
-            if self.meth == 'gcurl':
-                self.trace('Before Curl Download')
-                if not self.get_gcurl_file(self.url, temp_file):
-                    self.error('Could not download file')
-                    self.set_failure()
-                    return
-            elif self.meth == 'system':
-                self.trace('Before System Download')
-                if not self.get_system_file(self.url, temp_file):
-                    self.error('Could not download file')
-                    self.set_failure()
-                    return
-            else:
+            url_list = [u.strip() for u in self.url.split(';') if u.strip()]
+            origin_list = [o.strip() for o in self.origin.split(';')] if self.origin else []
+            while len(origin_list) < len(url_list):
+                origin_list.append('')
+
+            if not url_list:
+                self.error('Could not download file')
+                self.set_failure()
+                return
+
+            if self.meth not in ('gcurl', 'system'):
                 self.error('Unknown request method')
                 self.set_failure()
+                return
+
+            success = False
+            for index, (file_url, file_origin) in enumerate(zip(url_list, origin_list)):
+                if file_origin and not is_valid_url(file_origin):
+                    file_origin = file_url
+
+                self.origin = file_origin
+
+                if index > 0:
+                    self.warn(f'File failed to download, trying alternative source: {index + 1}/{len(url_list)}')
+                    random_sleep(12, 12, self)
+
+                self.trace(f"Before {'Curl' if self.meth == 'gcurl' else 'System'} Download: {file_url}")
+                if self.meth == 'gcurl':
+                    success = self.get_gcurl_file(file_url, temp_file)
+                else:
+                    success = self.get_system_file(file_url, temp_file)
+
+                if success and os.path.exists(temp_file) and os.path.isfile(temp_file) \
+                        and not is_cloudflare_block(temp_file) and os.path.getsize(temp_file) > 0:
+                    break
+
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except OSError:
+                        pass
+
+            if not success:
+                self.error('Could not download file')
+                self.set_failure()
+                return
 
             if os.path.exists(temp_file) and os.path.isfile(temp_file):
 
@@ -223,6 +273,9 @@ class DownloadFileJob(TaskWrapper):
                     dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
 
                     shutil.move(str(temp_file), str(dest_path))
+
+                    source_row.last_date = date_type.today()
+                    db_session.commit()
                 else:
                     self.error('Zero length file, skipping')
                     self.set_failure()

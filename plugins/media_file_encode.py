@@ -8,18 +8,18 @@ from pathlib import Path
 
 from flask_sqlalchemy.session import Session
 
-from constants import PROPERTY_SERVER_MEDIA_ENCODER_HOST, PROPERTY_SERVER_MEDIA_ENCODER_PORT
 from db import MediaFile
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import encode_video, FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
     get_ffmpeg_f_argument_from_mimetype, FFMPEG_AUDIO_BIT, FFMPEG_STEREO, FFMPEG_AUDIO_BIT_RATE_VALUES, \
-    FFMPEG_STEREO_VALUES
+    FFMPEG_STEREO_VALUES, generate_video_thumbnail, FFMPEG_RESOLUTION, FFMPEG_RESOLUTION_VALUES
 from file_utils import temporary_folder
+from image_utils import resize_image
 from media_queries import insert_file, find_files_in_folder
 from media_utils import get_data_for_mediafile, get_file_by_user, \
-    get_folder_by_user, describe_file_size_change, clean_files_for_mediafile
+    get_folder_by_user, describe_file_size_change, clean_files_for_mediafile, get_preview_for_mediafile
 from plugin_system import ActionMediaFilePlugin, ActionMediaFilesPlugin
-from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values
+from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values, FFMPEG_LOCAL_ONLY
 from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 
@@ -28,19 +28,29 @@ class EncodeForFilePlugin(ActionMediaFilePlugin):
     """
     Re-encode a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Re-encodes one video file to H.264 MP4 with the chosen quality settings, '
+                            'registers the result as a new file, and optionally keeps, purges, or '
+                            'renames the original.')
+    AI_LONG_DESCRIPTION = (
+        'Re-encodes a single video file (only files whose MIME type starts with "video/" are '
+        'accepted) using ffmpeg (or a remote encoder service when one is configured and '
+        '"Local Encoding Only" is No). The encode uses H.264 (libx264, high profile, level 4.2, '
+        'yuv420p) with a configurable Preset (default medium), Constant Rate Factor (default 23), '
+        'audio as AAC at a selectable bit rate (default 128k), optional stereo mix-down, and an '
+        'optional max-resolution scale-down (default: keep source). faststart is applied for web '
+        'playback. The result is written to a temp file, registered in the database as a new '
+        'media file in the same folder, given the Postfix (default "_enc") before the extension, '
+        'moved to the chosen disk (Primary or Archive), and a preview thumbnail is generated. '
+        'After a clean encode the source is handled per the Clean Up choice: Keep (default, leave '
+        'it), Purge (delete file + DB row), or Rename (prefix the original\'s filename with a '
+        'timestamp so it survives alongside the encode). Required arguments: Preset, CRF, Audio '
+        'Bit Rate, Mix-down, and Location (dest). Max Resolution, Postfix, Clean Up, and Local '
+        'Encoding Only are optional. Requires ffmpeg (and a remote encoder host to use the '
+        'remote path).')
 
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medenc'
-        self.media_encoder_host = None
-        self.media_encoder_port = 8080
-
-    def absorb_config(self, config):
-        super().absorb_config(config)
-        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
-        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
-        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
-            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_file_encode', 'sequence': 1}
@@ -67,13 +77,22 @@ class EncodeForFilePlugin(ActionMediaFilePlugin):
         result.append(FFMPEG_CRF)
         result.append(FFMPEG_AUDIO_BIT)
         result.append(FFMPEG_STEREO)
+        result.append(FFMPEG_RESOLUTION)
         result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _enc)'))
+
+        result.append(
+            plugin_select_arg('Location', 'dest', 'primary',
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media',
+                              adv='Y')
+        )
 
         result.append(
             plugin_select_arg('Clean Up', 'cleanup', 'keep',
                               plugin_select_values('Keep', 'keep', 'Purge', 'purge', 'Rename', 'rename'),
-                              'What to do with the source file after a successful encode.', adv='Y')
+                               'What to do with the source file after a successful encode.', adv='Y')
         )
+
+        result.append(FFMPEG_LOCAL_ONLY)
 
         return result
 
@@ -112,11 +131,23 @@ class EncodeForFilePlugin(ActionMediaFilePlugin):
 
             if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
                 results.append('unknown ffmpeg_mix value')
+        # Max Resolution
+        if 'ffmpeg_res' not in args or is_blank(args['ffmpeg_res']):
+            args['ffmpeg_res'] = 'src'
+        else:
+            args['ffmpeg_res'] = clean_string(args['ffmpeg_res'])
+            if args['ffmpeg_res'] not in FFMPEG_RESOLUTION_VALUES:
+                results.append('unknown ffmpeg_res value')
 
         if 'postfix' not in args or is_blank(args['postfix']):
             args['postfix'] = '_enc'
         else:
             args['postfix'] = clean_string(args['postfix'])
+
+        if 'dest' not in args or is_blank(args['dest']):
+            results.append('dest is required')
+        elif not (args['dest'] == 'primary' or args['dest'] == 'archive'):
+            results.append('Invalid dest value')
 
         if 'cleanup' not in args or is_blank(args['cleanup']):
             args['cleanup'] = 'keep'
@@ -124,6 +155,13 @@ class EncodeForFilePlugin(ActionMediaFilePlugin):
             args['cleanup'] = clean_string(args['cleanup'])
             if args['cleanup'] not in ('keep', 'purge', 'rename'):
                 results.append('Invalid cleanup value')
+
+        if 'local_encoding_only' not in args or is_blank(args['local_encoding_only']):
+            args['local_encoding_only'] = 'n'
+        else:
+            args['local_encoding_only'] = clean_string(args['local_encoding_only'])
+            if args['local_encoding_only'] not in ('y', 'n'):
+                results.append('Invalid local_encoding_only value')
 
         if len(results) > 0:
             return results
@@ -136,27 +174,32 @@ class EncodeForFilePlugin(ActionMediaFilePlugin):
         return EncodeJob("EncodeFile", 'Encoding: ' + args['file_id'], args['file_id'], args['ffmpeg_preset'],
                          args['ffmpeg_crf'],
                          self.primary_path, self.archive_path, self.temp_path, int(args['ffmpeg_abr']),
-                         args['ffmpeg_mix'] == 't', self.media_encoder_host, self.media_encoder_port,
-                         postfix=args['postfix'], cleanup=args['cleanup'])
+                         args['ffmpeg_mix'] == 't',
+                         postfix=args['postfix'], cleanup=args['cleanup'], resolution=args['ffmpeg_res'],
+                         dest=args['dest'], local_only=args['local_encoding_only'] == 'y')
 
 
 class EncodeForFilesPlugin(ActionMediaFilesPlugin):
     """
     Re-encode a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Re-encodes a comma-separated list of video files to H.264 MP4 using '
+                            'ffmpeg, registering each result as a new media file.')
+    AI_LONG_DESCRIPTION = (
+        'The multi-file version of the single-file encode. Takes a comma-separated list of file '
+        'ids and queues one EncodeJob per file; non-video files in the list are skipped with an '
+        'error. Each job re-encodes its source to H.264 MP4 (libx264 high profile 4.2, yuv420p, '
+        'AAC audio, faststart) using the shared Preset, constant-rate-factor, audio bit-rate, '
+        'stereo mix-down, and optional max-resolution options, via a remote encoder service when '
+        'configured or local ffmpeg otherwise. Each encoded result is registered as a new media '
+        'file with the Postfix (default "_enc"), moved to the Primary or Archive disk, and '
+        'thumbnailed; each source is then kept, purged, or timestamp-renamed per the Clean Up '
+        'choice. Required arguments: Preset, CRF, Audio Bit Rate, Mix-down, and Location. '
+        'Requires ffmpeg.')
 
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medencs'
-        self.media_encoder_host = None
-        self.media_encoder_port = 8080
-
-    def absorb_config(self, config):
-        super().absorb_config(config)
-        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
-        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
-        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
-            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_files_encode', 'sequence': 1}
@@ -183,13 +226,21 @@ class EncodeForFilesPlugin(ActionMediaFilesPlugin):
         result.append(FFMPEG_CRF)
         result.append(FFMPEG_AUDIO_BIT)
         result.append(FFMPEG_STEREO)
+        result.append(FFMPEG_RESOLUTION)
         result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _enc)'))
+        result.append(
+            plugin_select_arg('Location', 'dest', 'primary',
+                              plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media',
+                              adv='Y')
+        )
 
         result.append(
             plugin_select_arg('Clean Up', 'cleanup', 'keep',
                               plugin_select_values('Keep', 'keep', 'Purge', 'purge', 'Rename', 'rename'),
-                              'What to do with the source file after a successful encode.', adv='Y')
+                               'What to do with the source file after a successful encode.', adv='Y')
         )
+
+        result.append(FFMPEG_LOCAL_ONLY)
 
         return result
 
@@ -228,11 +279,23 @@ class EncodeForFilesPlugin(ActionMediaFilesPlugin):
 
             if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
                 results.append('unknown ffmpeg_mix value')
+        # Max Resolution
+        if 'ffmpeg_res' not in args or is_blank(args['ffmpeg_res']):
+            args['ffmpeg_res'] = 'src'
+        else:
+            args['ffmpeg_res'] = clean_string(args['ffmpeg_res'])
+            if args['ffmpeg_res'] not in FFMPEG_RESOLUTION_VALUES:
+                results.append('unknown ffmpeg_res value')
 
         if 'postfix' not in args or is_blank(args['postfix']):
             args['postfix'] = '_enc'
         else:
             args['postfix'] = clean_string(args['postfix'])
+
+        if 'dest' not in args or is_blank(args['dest']):
+            results.append('dest is required')
+        elif not (args['dest'] == 'primary' or args['dest'] == 'archive'):
+            results.append('Invalid dest value')
 
         if 'cleanup' not in args or is_blank(args['cleanup']):
             args['cleanup'] = 'keep'
@@ -257,9 +320,10 @@ class EncodeForFilesPlugin(ActionMediaFilesPlugin):
         for file_id in file_list:
             result.append(EncodeJob("EncodeFile", 'Encoding: ' + file_id, file_id, args['ffmpeg_preset'],
                                     args['ffmpeg_crf'],
-                                    self.primary_path, self.archive_path, self.temp_path, int(args['ffmpeg_abr']),
-                                    args['ffmpeg_mix'] == 't', self.media_encoder_host, self.media_encoder_port,
-                                    postfix=args['postfix'], cleanup=args['cleanup']))
+                                    self.primary_path, self.archive_path,
+                                    self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
+                                    postfix=args['postfix'], cleanup=args['cleanup'], resolution=args['ffmpeg_res'],
+                                    dest=args['dest'], local_only=args['local_encoding_only'] == 'y'))
 
         return result
 
@@ -267,8 +331,9 @@ class EncodeForFilesPlugin(ActionMediaFilesPlugin):
 class EncodeJob(TaskWrapper):
     def __init__(self, name, description, file_id, ffmpeg_preset: str, ffmpeg_crf: str, primary_folder: str,
                  archive_folder: str,
-                 temp_folder: str, audio_bit_rate: int = 128, stereo: bool = True, encoder_host: str | None = None,
-                 encoder_port: int | None = 8080, postfix: str = '_enc', cleanup: str = 'keep'):
+                 temp_folder: str, audio_bit_rate: int = 128, stereo: bool = True,
+                  postfix: str = '_enc', cleanup: str = 'keep', resolution: str = 'src', dest: str | None = 'primary',
+                  local_only: bool = False):
         super().__init__(name, description)
         self.file_id = file_id
         self.folder_id = None
@@ -277,15 +342,14 @@ class EncodeJob(TaskWrapper):
         self.temp_folder = temp_folder
         self.ffmpeg_preset = ffmpeg_preset
         self.ffmpeg_crf = int(ffmpeg_crf)
+        self.dest = dest
         self.postfix = postfix
         self.cleanup = cleanup
-        self.weight = 70
-        if encoder_host is not None and len(encoder_host) > 0:
-            self.weight = 10
+        self.weight = 70 if local_only else 20
         self.audio_bit_rate = audio_bit_rate
         self.stereo = stereo
-        self.encoder_host = encoder_host
-        self.encoder_port = encoder_port
+        self.resolution = resolution
+        self.local_only = local_only
 
     def _apply_cleanup(self, file: MediaFile, db_session: Session):
         if self.cleanup == 'keep':
@@ -318,6 +382,8 @@ class EncodeJob(TaskWrapper):
                 if self.can_trace():
                     self.trace('Getting Files')
                 self.ref_folder_id = folder_row.id
+                self.ref_folder_name = folder_row.name if hasattr(folder_row, 'name') else str(folder_row.id)
+                self.ref_folder_preview = folder_row.preview == True
                 files = find_files_in_folder(folder_row.id, None, 0, 1000, db_session=db_session)
                 for file in files:
                     if file.mime_type.startswith('video/'):
@@ -340,6 +406,8 @@ class EncodeJob(TaskWrapper):
                 if file_row.mime_type.startswith('video/'):
                     to_process.append(file_row)
                     self.ref_folder_id = folder_row.id
+                    self.ref_folder_name = folder_row.name if hasattr(folder_row, 'name') else str(folder_row.id)
+                    self.ref_folder_preview = folder_row.preview == True
                 else:
                     self.error(f'Given file mime-type {file_row.mime_type} is not a video')
 
@@ -382,13 +450,9 @@ class EncodeJob(TaskWrapper):
 
                     self.info(f'Working on {file.filename}')
 
-                    modified_encoder_host = None
-
-                    if self.encoder_host is not None:
-                        modified_encoder_host = 'http://' + self.encoder_host + ":" + str(self.encoder_port)
-
                     if encode_video(source_file, dest_file, desired_format, self.ffmpeg_preset, self.ffmpeg_crf,
-                                    self.stereo, self.audio_bit_rate, log=self, server_url=modified_encoder_host):
+                                    self.stereo, self.audio_bit_rate, resolution=self.resolution,
+                                    local_only=self.local_only, log=self):
 
                         src_path = Path(temp_folder) / 'temp.mp4'
 
@@ -401,7 +465,7 @@ class EncodeJob(TaskWrapper):
                         created_time = datetime.fromtimestamp(src_path.stat().st_ctime)
                         mime_type, _ = mimetypes.guess_type(src_path)
 
-                        is_archive = False
+                        is_archive = self.dest is not None and self.dest == 'archive'
 
                         # Try to insert the object
                         new_file = insert_file(folder_row.id, file_name, mime_type, is_archive, False, file_size,
@@ -426,6 +490,21 @@ class EncodeJob(TaskWrapper):
 
                         self._apply_cleanup(file, db_session)
                         db_session.commit()
+
+                        self.trace('Finding Preview')
+                        preview_path = get_preview_for_mediafile(new_file, self.primary_folder)
+
+                        try:
+                            generate_video_thumbnail(dest_path, 'mp4', preview_path, 40)
+                            if os.path.exists(preview_path):
+                                resize_image(preview_path, preview_path, 256, 'WEBP')
+                                new_file.preview = True
+                                db_session.commit()
+                            else:
+                                self.warn("Could not find preview")
+                        except Exception as e:
+                            logging.exception(e)
+                            self.set_failure()
 
                         self.set_worked()
                     else:

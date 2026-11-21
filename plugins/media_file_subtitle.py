@@ -9,12 +9,12 @@ from typing import Optional
 
 from flask_sqlalchemy.session import Session
 
-from constants import PROPERTY_SERVER_MEDIA_ENCODER_PORT, PROPERTY_SERVER_MEDIA_ENCODER_HOST
 from db import MediaFile, MediaFolder
 from feature_flags import MANAGE_MEDIA
 from ffmpeg_utils import FFMPEG_PRESET, FFMPEG_PRESET_VALUES, FFMPEG_CRF, FFMPEG_CRF_VALUES, \
     get_ffmpeg_f_argument_from_mimetype, FFMPEG_AUDIO_BIT, FFMPEG_AUDIO_BIT_RATE_VALUES, \
-    FFMPEG_STEREO, FFMPEG_STEREO_VALUES, encode_video, generate_video_thumbnail
+    FFMPEG_STEREO, FFMPEG_STEREO_VALUES, encode_video, generate_video_thumbnail, FFMPEG_RESOLUTION, \
+    FFMPEG_RESOLUTION_VALUES
 from file_utils import temporary_folder
 from image_utils import resize_image
 from media_queries import insert_file, find_file_by_filename, find_files_in_folder
@@ -22,8 +22,8 @@ from media_utils import get_data_for_mediafile, \
     get_filename_with_extension, convert_vtt_to_srt, get_folder_by_user, get_file_by_user, describe_file_size_change, \
     get_preview_for_mediafile, clean_files_for_mediafile
 from number_utils import is_integer_with_sign
-from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values
-from plugin_system import ActionMediaFilePlugin, ActionMediaFolderPlugin, ActionMediaFilesPlugin
+from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values, FFMPEG_LOCAL_ONLY
+from plugin_system import ActionMediaFilePlugin, ActionMediaFilesPlugin, ActionMediaFolderPlugin
 from text_utils import is_not_blank, is_blank, clean_string
 from thread_utils import TaskWrapper
 
@@ -32,19 +32,25 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
     """
     Subtitle a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Burns a matching .srt/.vtt subtitle track into one video file and '
+                            'registers the result as a new media file.')
+    AI_LONG_DESCRIPTION = (
+        'Burns hard subtitles into a single video file. It looks in the file\'s folder for a '
+        'subtitle file with the same base name (first a .srt, then a .vtt); a .vtt is converted '
+        'to .srt in a temp folder using the Offset (in seconds, signed) before encoding. The '
+        'video is re-encoded to H.264 MP4 (libx264, AAC, faststart) with the subtitle track baked '
+        'in via ffmpeg\'s subtitles filter, honoring the shared Preset / constant-rate-factor / '
+        'audio bit-rate / stereo mix-down / optional max-resolution options and using a remote '
+        'encoder service when configured. The output is registered as a new file with the Postfix '
+        '(default "_sub"), moved to the Primary or Archive disk, thumbnailed, and the video and '
+        'subtitle sources are then kept, purged, or timestamp-renamed per Clean Up. Files with no '
+        'matching subtitle are skipped with a warning. Required arguments: Preset, CRF, Audio Bit '
+        'Rate, Mix-down, and Location. Offset, Postfix, Clean Up, Max Resolution, and Local '
+        'Encoding Only are optional. Requires ffmpeg.')
 
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medsub'
-        self.media_encoder_host = None
-        self.media_encoder_port = 8080
-
-    def absorb_config(self, config):
-        super().absorb_config(config)
-        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
-        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
-        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
-            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_file_subtitle', 'sequence': 1}
@@ -67,12 +73,13 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
     def get_action_args(self):
         result = super().get_action_args()
 
-        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
-        result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _sub)'))
         result.append(FFMPEG_PRESET)
         result.append(FFMPEG_CRF)
         result.append(FFMPEG_AUDIO_BIT)
         result.append(FFMPEG_STEREO)
+        result.append(FFMPEG_RESOLUTION)
+        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
+        result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _sub)'))
 
         result.append(
             plugin_select_arg('Location', 'dest', 'primary',
@@ -83,8 +90,10 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
         result.append(
             plugin_select_arg('Clean Up', 'cleanup', 'keep',
                               plugin_select_values('Keep', 'keep', 'Purge', 'purge', 'Rename', 'rename'),
-                              'What to do with the source files after a successful encode.', adv='Y')
+                               'What to do with the source files after a successful encode.', adv='Y')
         )
+
+        result.append(FFMPEG_LOCAL_ONLY)
 
         return result
 
@@ -122,6 +131,14 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
 
             if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
                 results.append('unknown ffmpeg_mix value')
+        # Max Resolution
+        if 'ffmpeg_res' not in args or is_blank(args['ffmpeg_res']):
+            args['ffmpeg_res'] = 'src'
+        else:
+            args['ffmpeg_res'] = clean_string(args['ffmpeg_res'])
+            if args['ffmpeg_res'] not in FFMPEG_RESOLUTION_VALUES:
+                results.append('unknown ffmpeg_res value')
+
 
         if 'offset' not in args or is_blank(args['offset']):
             args['offset'] = 0
@@ -148,6 +165,13 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
             if args['cleanup'] not in ('keep', 'purge', 'rename'):
                 results.append('Invalid cleanup value')
 
+        if 'local_encoding_only' not in args or is_blank(args['local_encoding_only']):
+            args['local_encoding_only'] = 'n'
+        else:
+            args['local_encoding_only'] = clean_string(args['local_encoding_only'])
+            if args['local_encoding_only'] not in ('y', 'n'):
+                results.append('Invalid local_encoding_only value')
+
         if len(results) > 0:
             return results
         return None
@@ -159,28 +183,33 @@ class SubtitleForFilePlugin(ActionMediaFilePlugin):
         return SubtitleEncodeJob("SubtitleFile", 'Encoding: ' + args['file_id'], args['file_id'], None,
                                  args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
                                  self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
-                                 int(args['offset']), encoder_host=self.media_encoder_host,
-                                 encoder_port=self.media_encoder_port, dest=args['dest'],
-                                 postfix=args['postfix'], cleanup=args['cleanup'])
+                                  int(args['offset']), dest=args['dest'],
+                                  postfix=args['postfix'], cleanup=args['cleanup'], resolution=args['ffmpeg_res'],
+                                  local_only=args['local_encoding_only'] == 'y')
 
 
 class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
     """
     Subtitle a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Burns a matching .srt/.vtt subtitle track into each file of a '
+                            'comma-separated list and registers each result as a new media file.')
+    AI_LONG_DESCRIPTION = (
+        'The multi-file version of the single-file burn-subtitles action. Takes a comma-separated '
+        'list of file ids and queues one SubtitleEncodeJob per file (non-video files are skipped '
+        'with an error). Each job finds a .srt (preferred) or .vtt companion with the same base '
+        'name in the file\'s folder, converting any .vtt to .srt with the signed Offset in '
+        'seconds, then re-encodes the video to H.264 MP4 with the subtitle baked in via the '
+        'subtitles filter. Output is registered as a new file with the Postfix (default "_sub"), '
+        'moved to Primary or Archive, thumbnailed, and the video and subtitle sources are kept, '
+        'purged, or timestamp-renamed per Clean Up. Files lacking a subtitle are skipped with a '
+        'warning. Shared options (Preset, CRF, Audio Bit Rate, Mix-down, Location are required; '
+        'Offset, Postfix, Clean Up, Max Resolution, Local Encoding Only optional) work exactly as '
+        'in the single-file action, including the remote-encoder path. Requires ffmpeg.')
 
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medsub'
-        self.media_encoder_host = None
-        self.media_encoder_port = 8080
-
-    def absorb_config(self, config):
-        super().absorb_config(config)
-        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
-        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
-        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
-            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_file_subtitle', 'sequence': 1}
@@ -203,13 +232,13 @@ class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
     def get_action_args(self):
         result = super().get_action_args()
 
-        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
-        result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _sub)'))
         result.append(FFMPEG_PRESET)
         result.append(FFMPEG_CRF)
         result.append(FFMPEG_AUDIO_BIT)
         result.append(FFMPEG_STEREO)
-
+        result.append(FFMPEG_RESOLUTION)
+        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
+        result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _sub)'))
         result.append(
             plugin_select_arg('Location', 'dest', 'primary',
                               plugin_select_values('Primary Disk', 'primary', 'Archive Disk', 'archive'), '', 'media',
@@ -219,8 +248,10 @@ class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
         result.append(
             plugin_select_arg('Clean Up', 'cleanup', 'keep',
                               plugin_select_values('Keep', 'keep', 'Purge', 'purge', 'Rename', 'rename'),
-                              'What to do with the source files after a successful encode.', adv='Y')
+                               'What to do with the source files after a successful encode.', adv='Y')
         )
+
+        result.append(FFMPEG_LOCAL_ONLY)
 
         return result
 
@@ -258,6 +289,13 @@ class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
 
             if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
                 results.append('unknown ffmpeg_mix value')
+        # Max Resolution
+        if 'ffmpeg_res' not in args or is_blank(args['ffmpeg_res']):
+            args['ffmpeg_res'] = 'src'
+        else:
+            args['ffmpeg_res'] = clean_string(args['ffmpeg_res'])
+            if args['ffmpeg_res'] not in FFMPEG_RESOLUTION_VALUES:
+                results.append('unknown ffmpeg_res value')
 
         if 'offset' not in args or is_blank(args['offset']):
             args['offset'] = 0
@@ -284,6 +322,13 @@ class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
             if args['cleanup'] not in ('keep', 'purge', 'rename'):
                 results.append('Invalid cleanup value')
 
+        if 'local_encoding_only' not in args or is_blank(args['local_encoding_only']):
+            args['local_encoding_only'] = 'n'
+        else:
+            args['local_encoding_only'] = clean_string(args['local_encoding_only'])
+            if args['local_encoding_only'] not in ('y', 'n'):
+                results.append('Invalid local_encoding_only value')
+
         if len(results) > 0:
             return results
         return None
@@ -299,11 +344,12 @@ class SubtitleForFilesPlugin(ActionMediaFilesPlugin):
 
         for file_id in file_list:
             result.append(SubtitleEncodeJob("SubtitleFile", 'Encoding: ' + file_id, file_id, None,
-                                 args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
-                                 self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
-                                 int(args['offset']), encoder_host=self.media_encoder_host,
-                                 encoder_port=self.media_encoder_port, dest=args['dest'],
-                                 postfix=args['postfix'], cleanup=args['cleanup']))
+                                            args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path,
+                                            self.archive_path,
+                                            self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
+                                             int(args['offset']), dest=args['dest'],
+                                             postfix=args['postfix'], cleanup=args['cleanup'], resolution=args['ffmpeg_res'],
+                                             local_only=args['local_encoding_only'] == 'y'))
 
         return result
 
@@ -312,19 +358,26 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
     """
     Subtitle a folder using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Burns a matching .srt/.vtt subtitle track into every video file in a '
+                            'media folder, registering each result as a new media file.')
+    AI_LONG_DESCRIPTION = (
+        'The folder-wide version of the burn-subtitles action. Processes every video file in the '
+        'current folder (up to 1000), one after another in a single task. For each file it looks '
+        'for a .srt (preferred) or .vtt companion with the same base name in that same folder, '
+        'converting any .vtt to .srt first, then re-encodes the video to H.264 MP4 with the '
+        'subtitle baked in via the subtitles filter using the shared Preset / constant-rate-factor '
+        '/ audio bit-rate / stereo mix-down / optional max-resolution options and the remote '
+        'encoder path when configured. Each output is registered as a new file with the Postfix '
+        '(default "_sub"), moved to Primary or Archive, thumbnailed, and the video + subtitle '
+        'sources are kept, purged, or timestamp-renamed per Clean Up. Files with no matching '
+        'subtitle are skipped with a warning. Note: unlike the file-level variants, this folder '
+        'variant does not apply an Offset to VTT-to-SRT conversion. Required arguments: Preset, '
+        'CRF, Audio Bit Rate, Mix-down, and Location. Postfix, Clean Up, Max Resolution, and '
+        'Local Encoding Only are optional. Requires ffmpeg.')
 
     def __init__(self):
         super().__init__()
         self.prefix_lang_id = 'medsubfol'
-        self.media_encoder_host = None
-        self.media_encoder_port = 8080
-
-    def absorb_config(self, config):
-        super().absorb_config(config)
-        self.media_encoder_port = config[PROPERTY_SERVER_MEDIA_ENCODER_PORT]
-        self.media_encoder_host = config[PROPERTY_SERVER_MEDIA_ENCODER_HOST]
-        if self.media_encoder_host is not None and len(self.media_encoder_host) == 0:
-            self.media_encoder_host = None
 
     def get_sort(self):
         return {'id': 'media_folder_subtitle', 'sequence': 1}
@@ -351,7 +404,8 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
         result.append(FFMPEG_CRF)
         result.append(FFMPEG_AUDIO_BIT)
         result.append(FFMPEG_STEREO)
-
+        result.append(FFMPEG_RESOLUTION)
+        result.append(plugin_string_arg('Offset', 'offset', 'Subtitle Offset in seconds'))
         result.append(plugin_string_arg('Postfix', 'postfix', 'Suffix added before the extension (default: _sub)'))
 
         result.append(
@@ -363,8 +417,10 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
         result.append(
             plugin_select_arg('Clean Up', 'cleanup', 'keep',
                               plugin_select_values('Keep', 'keep', 'Purge', 'purge', 'Rename', 'rename'),
-                              'What to do with the source files after a successful encode.', adv='Y')
+                               'What to do with the source files after a successful encode.', adv='Y')
         )
+
+        result.append(FFMPEG_LOCAL_ONLY)
 
         return result
 
@@ -402,6 +458,13 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
 
             if args['ffmpeg_mix'] not in FFMPEG_STEREO_VALUES:
                 results.append('unknown ffmpeg_mix value')
+        # Max Resolution
+        if 'ffmpeg_res' not in args or is_blank(args['ffmpeg_res']):
+            args['ffmpeg_res'] = 'src'
+        else:
+            args['ffmpeg_res'] = clean_string(args['ffmpeg_res'])
+            if args['ffmpeg_res'] not in FFMPEG_RESOLUTION_VALUES:
+                results.append('unknown ffmpeg_res value')
 
         if 'postfix' not in args or is_blank(args['postfix']):
             args['postfix'] = '_sub'
@@ -420,6 +483,13 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
             if args['cleanup'] not in ('keep', 'purge', 'rename'):
                 results.append('Invalid cleanup value')
 
+        if 'local_encoding_only' not in args or is_blank(args['local_encoding_only']):
+            args['local_encoding_only'] = 'n'
+        else:
+            args['local_encoding_only'] = clean_string(args['local_encoding_only'])
+            if args['local_encoding_only'] not in ('y', 'n'):
+                results.append('Invalid local_encoding_only value')
+
         if len(results) > 0:
             return results
         return None
@@ -431,16 +501,15 @@ class SubtitleForFolderPlugin(ActionMediaFolderPlugin):
         return SubtitleEncodeJob("SubtitleFolder", 'Encoding: ' + args['folder_id'], None, args['folder_id'],
                                  args['ffmpeg_preset'], args['ffmpeg_crf'], self.primary_path, self.archive_path,
                                  self.temp_path, int(args['ffmpeg_abr']), args['ffmpeg_mix'] == 't',
-                                 encoder_host=self.media_encoder_host, encoder_port=self.media_encoder_port,
-                                 dest=args['dest'], postfix=args['postfix'], cleanup=args['cleanup'])
+                                  dest=args['dest'], postfix=args['postfix'], cleanup=args['cleanup'], resolution=args['ffmpeg_res'],
+                                  local_only=args['local_encoding_only'] == 'y')
 
 
 class SubtitleEncodeJob(TaskWrapper):
     def __init__(self, name, description, file_id: Optional[str], folder_id: Optional[str], ffmpeg_preset: str,
                  ffmpeg_crf: str, primary_folder: str, archive_folder: str, temp_folder: str, audio_bit_rate: int = 128,
-                 stereo: bool = True, offset: int = 0, encoder_host: str | None = None,
-                 encoder_port: int | None = 8080, dest: str | None = 'primary', postfix: str = '_sub',
-                 cleanup: str = 'keep'):
+                 stereo: bool = True, offset: int = 0, dest: str | None = 'primary', postfix: str = '_sub',
+                  cleanup: str = 'keep', resolution: str = 'src', local_only: bool = False):
         super().__init__(name, description)
         self.file_id = file_id
         self.folder_id = folder_id
@@ -452,14 +521,12 @@ class SubtitleEncodeJob(TaskWrapper):
         self.dest = dest
         self.postfix = postfix
         self.cleanup = cleanup
-        self.weight = 70
-        if encoder_host is not None and len(encoder_host) > 0:
-            self.weight = 10
+        self.weight = 70 if local_only else 20
         self.audio_bit_rate = audio_bit_rate
         self.stereo = stereo
         self.offset = offset
-        self.encoder_host = encoder_host
-        self.encoder_port = encoder_port
+        self.resolution = resolution
+        self.local_only = local_only
 
     def find_subtitle_for_file(self, folder: MediaFolder, file: MediaFile, temp_folder: str, db_session: Session) -> \
             Optional[str]:
@@ -502,7 +569,6 @@ class SubtitleEncodeJob(TaskWrapper):
         except OSError as e:
             self.warn(f'Clean up failed for {file.filename}: {e}')
 
-
     def run(self, db_session: Session):
 
         # Sanity Check
@@ -523,6 +589,7 @@ class SubtitleEncodeJob(TaskWrapper):
                 if self.can_trace():
                     self.trace('Getting Files')
                 self.ref_folder_id = folder_row.id
+                self.ref_folder_name = folder_row.name if hasattr(folder_row, 'name') else str(folder_row.id)
                 self.ref_folder_preview = folder_row.preview == True
                 files = find_files_in_folder(folder_row.id, None, 0, 1000, db_session=db_session)
                 for file in files:
@@ -546,6 +613,7 @@ class SubtitleEncodeJob(TaskWrapper):
                 if file_row.mime_type.startswith('video/'):
                     to_process.append(file_row)
                     self.ref_folder_id = folder_row.id
+                    self.ref_folder_name = folder_row.name if hasattr(folder_row, 'name') else str(folder_row.id)
                     self.ref_folder_preview = folder_row.preview == True
                 else:
                     self.error(f'Given file mime-type {file_row.mime_type} is not a video')
@@ -599,17 +667,9 @@ class SubtitleEncodeJob(TaskWrapper):
 
                     self.info('Found Subtitle File, Working...')
 
-                    modified_encoder_host = None
-
-                    if self.encoder_host is not None:
-                        modified_encoder_host = 'http://' + self.encoder_host + ":" + str(self.encoder_port)
-
                     if encode_video(source_file, dest_file, desired_format, self.ffmpeg_preset, self.ffmpeg_crf,
-                                    self.stereo, self.audio_bit_rate, log=self, server_url=modified_encoder_host,
-                                    srt_file=srt_file):
-                        # if burn_subtitles_to_video(source_file, srt_file, dest_file, self.offset, desired_format,
-                        #                           self.ffmpeg_preset,
-                        #                           self.ffmpeg_crf, self.stereo, self.audio_bit_rate, log=self):
+                                    self.stereo, self.audio_bit_rate, log=self,
+                                    srt_file=srt_file, resolution=self.resolution, local_only=self.local_only):
 
                         src_path = Path(temp_folder) / 'temp.mp4'
 

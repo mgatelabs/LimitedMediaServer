@@ -26,6 +26,15 @@ class CheckAllStatusTask(ActionBookGeneralPlugin):
     """
     This is used to download new book content from the Internet (All Books).
     """
+    AI_QUICK_DESCRIPTION = ('Checks every active book against its source site and deactivates '
+                            'books that are no longer being updated (optionally by processor).')
+    AI_LONG_DESCRIPTION = (
+        'Runs over all active books (or only those of a processor selected via Filter) and asks '
+        'each book\'s source site, through its processor, whether the series is still being '
+        'updated. A book whose site reports it is finished or offline is marked inactive in the '
+        'database. No chapters or images are downloaded or changed. The all-books variant only '
+        'runs on a Linux server. Filter is a required select (default All); per-processor book '
+        'ids are the values to choose from when not All.')
 
     def __init__(self):
         super().__init__()
@@ -110,6 +119,14 @@ class UpdateSingleStatusTask(ActionBookSpecificPlugin):
     """
     This is used to download new book content from the Internet (Single Book).
     """
+    AI_QUICK_DESCRIPTION = ('Checks one book against its source site and deactivates it in the '
+                            'database if the series is no longer being updated.')
+    AI_LONG_DESCRIPTION = (
+        'Runs a single-book liveness check: asks the book\'s processor (source site) whether the '
+        'series is still active and, if the site says it is finished or offline, marks the book '
+        'inactive in the database. Only runs on books that are currently active; an inactive or '
+        'unknown book produces no task. No chapters or images are downloaded or changed. Book ID '
+        'is required.')
 
     def __init__(self):
         super().__init__()
@@ -189,7 +206,7 @@ class CheckBookStatusTask(TaskWrapper):
 
         if book is not None:
             self.debug('Found book definition : ' + self.book_id)
-            bd = VolumeProcessor(self.processors, '', 'PNG', self)
+            bd = VolumeProcessor(self.processors, '', 'WEBP', self)
             status = bd.ia_active(book, self.token)
             if status is not None and not status:
                 self.info('Book no longer active')

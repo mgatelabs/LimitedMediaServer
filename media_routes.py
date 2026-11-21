@@ -18,14 +18,16 @@ from auth_utils import feature_required, feature_required_with_cookie, get_user_
     feature_required_silent
 from common_utils import generate_success_response, generate_failure_response
 from constants import PROPERTY_SERVER_MEDIA_READY, COMMON_MEDIA_RATINGS, PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, \
-    PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, APP_KEY_SLC
+    PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, APP_KEY_SLC, MEDIA_FOLDER_KEY_PURPOSE_DEFAULT
 from date_utils import convert_date_to_yyyymmdd, convert_datetime_to_yyyymmdd
 from db import db, MediaFolder, MediaFile, MediaFolderTag
 from feature_flags import VIEW_MEDIA, MANAGE_MEDIA, MEDIA_PLUGINS, MANAGE_APP
 from file_utils import is_valid_mime_type
 from media_queries import find_folder_by_id, find_root_folders, find_folders_in_folder, find_files_in_folder, \
     insert_folder, update_folder, find_file_by_id, update_file, count_folders_in_folder, count_root_folders, \
-    count_files_in_folder, insert_file, upsert_progress, find_progress_entries, get_all_tags, get_tag_row
+    count_files_in_folder, insert_file, upsert_progress, find_progress_entries, get_all_tags, get_tag_row, \
+    find_media_folder_key_values, find_media_folder_key_value, add_media_folder_key_value, \
+    update_media_folder_key_value, remove_media_folder_key_value
 from media_utils import calculate_offset_limit, parse_range_header, get_data_for_mediafile, get_media_max_rating, \
     get_folder_group_checker, get_folder_rating_checker, user_can_see_rating, read_file_chunk
 from messages import msg_file_migrated, msg_access_denied_content_rating, msg_action_cancelled_wrong, msg_action_failed, \
@@ -97,11 +99,11 @@ def list_media(user_details: dict) -> tuple:
             file_sort = MediaFile.filename
             sort_descending = True
         elif sort == 'DA':
-            folder_sort = MediaFolder.created
+            folder_sort = MediaFolder.last_date
             file_sort = MediaFile.created
             sort_descending = False
         elif sort == 'DD':
-            folder_sort = MediaFolder.created
+            folder_sort = MediaFolder.last_date
             file_sort = MediaFile.created
             sort_descending = True
         elif sort == 'FA':
@@ -170,6 +172,7 @@ def list_media(user_details: dict) -> tuple:
             file_rows = []
 
         # Setup the folder
+        current_info['id'] = clean_string(current_folder.id)
         current_info['name'] = clean_string(current_folder.name)
         current_info['info_url'] = clean_string(current_folder.info_url)
         current_info['rating'] = current_folder.rating
@@ -185,6 +188,7 @@ def list_media(user_details: dict) -> tuple:
         total_items = count_root_folders(filter_text, requested_rating_limit, required_tags=filter_required_tags,
                                          hidden_tags=filter_hidden_tags, db_session=None)
         file_rows = []
+        current_info['id'] = ''
         current_info['name'] = 'ROOT'
         current_info['info_url'] = ''
         current_info['rating'] = 0
@@ -229,7 +233,159 @@ def list_media(user_details: dict) -> tuple:
              "created": the_time, "updated": the_time})
 
     return generate_success_response('', {"info": current_info, "paging": {"total": total_items, "offset": offset},
-                                          "folders": folder_data, "files": file_data})
+                                           "folders": folder_data, "files": file_data})
+
+
+@media_blueprint.route('/list/by-date', methods=['POST'])
+@feature_required(media_blueprint, VIEW_MEDIA)
+def list_media_for_date(user_details: dict) -> tuple:
+    """
+    Retrieve a list of files created within a date range from the Media service.
+
+    Args:
+        user_details (dict): Details of the authenticated user.
+
+    Returns:
+        tuple: JSON response with the list of files, info, paging, message and status code.
+    """
+    if not current_app.config[PROPERTY_SERVER_MEDIA_READY]:
+        return generate_failure_response(
+            'This feature is not ready.  Please configure the app properties and restart the server.')
+
+    start_date_str = clean_string(request.form.get('start_date'))
+    end_date_str = clean_string(request.form.get('end_date'))
+
+    offset = clean_string(request.form.get('offset'))
+    limit = clean_string(request.form.get('limit'))
+    requested_rating_limit = clean_string(request.form.get('rating'))
+    sort = clean_string(request.form.get('sort'))
+
+    if is_blank(start_date_str) or is_blank(end_date_str):
+        return generate_failure_response('start_date and end_date parameters are required',
+                                          messages=[msg_missing_parameter('start_date'), msg_missing_parameter('end_date')])
+
+    if not (len(start_date_str) == 8 and len(end_date_str) == 8):
+        return generate_failure_response('Dates must be in YYYYMMDD format',
+                                          messages=[msg_invalid_parameter('start_date'), msg_invalid_parameter('end_date')])
+
+    for date_str, param_name in [(start_date_str, 'start_date'), (end_date_str, 'end_date')]:
+        try:
+            datetime.strptime(date_str, '%Y%m%d')
+        except ValueError:
+            return generate_failure_response(f'{param_name} is not a valid date',
+                                              messages=[msg_invalid_parameter(param_name)])
+
+    start_date = datetime.strptime(start_date_str, '%Y%m%d').date()
+    end_date = datetime.strptime(end_date_str, '%Y%m%d').date()
+
+    if start_date > end_date:
+        return generate_failure_response('start_date must be before or equal to end_date',
+                                          messages=[msg_invalid_parameter('start_date')])
+
+    if is_not_blank(offset) and is_integer(offset):
+        offset = int(offset)
+    else:
+        offset = 0
+
+    if is_not_blank(limit) and is_integer(limit):
+        limit = int(limit)
+    else:
+        limit = 20
+
+    if is_not_blank(requested_rating_limit) and is_integer(requested_rating_limit):
+        requested_rating_limit = int(requested_rating_limit)
+    else:
+        requested_rating_limit = 0
+
+    if is_not_blank(sort):
+        sort_descending = False
+        if sort == 'ZA' or sort == 'DD' or sort == 'FD':
+            sort_descending = True
+
+    max_rating_checker = get_folder_rating_checker(user_details)
+    folder_group_checker = get_folder_group_checker(user_details)
+    user_uid = get_uid(user_details)
+
+    if requested_rating_limit > 200:
+        return generate_failure_response('User has requested a rating limit they are not allowed to access!',
+                                          messages=[msg_access_denied_content_rating()])
+
+    # Build folder cache: collect all visible folders (root + descendants) via a single query
+    from sqlalchemy.orm import joinedload
+
+    all_visible_folders = db.session.query(MediaFolder).all()
+
+    cache = {}
+    for f in all_visible_folders:
+        if max_rating_checker(f) and folder_group_checker(f):
+            cache[f.id] = f
+
+    total_items = 0
+    file_data = []
+    tag_scanner = DCBitScanner128()
+
+    if cache:
+        from datetime import time as dt_time
+        query_builder = db.session.query(MediaFile).join(MediaFolder).filter(
+            MediaFolder.id.in_(list(cache.keys())),
+            MediaFile.created >= datetime.combine(start_date, dt_time.min),
+            MediaFile.created < datetime.combine(end_date + timedelta(days=1), dt_time.min)
+        ).options(joinedload(MediaFile.progress_records))
+
+        # Use column references for order_by instead of lambdas
+        if sort == 'FA':
+            query_builder = query_builder.order_by(MediaFile.filesize.asc()) if not sort_descending else query_builder.order_by(MediaFile.filesize.desc())
+        elif sort == 'FD':
+            query_builder = query_builder.order_by(MediaFile.filesize.desc()) if sort_descending else query_builder.order_by(MediaFile.filesize.asc())
+        elif sort in ('DA', 'DD'):
+            query_builder = query_builder.order_by(MediaFile.created.asc()) if not sort_descending else query_builder.order_by(MediaFile.created.desc())
+        elif sort == 'ZA':
+            query_builder = query_builder.order_by(MediaFile.filename.asc()) if not sort_descending else query_builder.order_by(MediaFile.filename.desc())
+        elif sort == 'AZ':
+            query_builder = query_builder.order_by(MediaFile.filename.asc()) if not sort_descending else query_builder.order_by(MediaFile.filename.desc())
+        else:
+            query_builder = query_builder.order_by(MediaFile.created.asc())
+
+        all_file_rows = query_builder.all()
+
+        for file_row in all_file_rows:
+            parent_folder = cache.get(file_row.folder_id)
+            if not parent_folder:
+                continue
+
+            if parent_folder.rating > requested_rating_limit:
+                continue
+
+            total_items += 1
+
+            user_progress = next(
+                (progress for progress in file_row.progress_records if progress.user_id == user_uid),
+                None
+            )
+
+            if user_progress is None:
+                progress = '0'
+            else:
+                progress = f'{user_progress.progress:.5f}'
+
+            file_data.append(
+                {"id": file_row.id, "name": file_row.filename, "mime_type": file_row.mime_type,
+                 "preview": file_row.preview, "filesize": file_row.filesize, "archive": file_row.archive,
+                 "progress": progress, "created": convert_datetime_to_yyyymmdd(file_row.created),
+                 "updated": convert_datetime_to_yyyymmdd(file_row.created),
+                 "folder_name": parent_folder.name, "folder_id": parent_folder.id,
+                 "fast_tags": tag_scanner.positions(int(parent_folder.folder_tag_mask) if parent_folder.folder_tag_mask else 0),
+                 "rating": parent_folder.rating})
+
+    start_idx = offset
+    end_idx = min(start_idx + limit, total_items)
+    if start_idx >= total_items:
+        file_data = []
+    else:
+        file_data = file_data[start_idx:end_idx]
+
+    return generate_success_response('', {"info": {}, "paging": {"total": total_items, "offset": offset},
+                                           "folders": [], "files": file_data})
 
 
 # Folder Management
@@ -736,7 +892,7 @@ def put_media_file(user_details: dict) -> tuple:
 
 
 @media_blueprint.route('/file/progress', methods=['POST'])
-@feature_required(media_blueprint, MANAGE_MEDIA)
+@feature_required(media_blueprint, VIEW_MEDIA)
 def put_media_progress(user_details: dict) -> tuple:
     file_id = clean_string(request.form.get('file_id'))
     progress = clean_string(request.form.get('progress'))
@@ -992,6 +1148,8 @@ def upload_file(user_details):
 
     new_file.filesize = Path(target_file).stat().st_size
 
+    existing_row.last_date = datetime.now(timezone.utc).date()
+
     db.session.commit()
 
     return generate_success_response('File uploaded', messages=[msg_operation_complete()])
@@ -1042,6 +1200,8 @@ def upload_note(user_details):
         f.write(note_text)
 
     new_file.filesize = Path(target_file).stat().st_size
+
+    existing_row.last_date = datetime.now(timezone.utc).date()
 
     db.session.commit()
 
@@ -1946,3 +2106,233 @@ def detach_tag(user_details):
     db.session.commit()
 
     return generate_success_response(f'Tag {bit_id} removed from folder', messages=[msg_operation_complete()])
+
+
+# ==============================================================================
+# Folder Key Values: Manage per-folder key/value rows
+# ==============================================================================
+
+def _acquire_folder_for_access(user_details: dict, folder_id: str) -> tuple:
+    """
+    Resolve a folder by id and verify the user is allowed to manage it.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+    folder_id (str): The folder identifier to resolve.
+
+    Returns:
+    tuple: (folder, None) on success, or (None, failure_response) when the folder
+    is missing or the user is not permitted to manage it.
+    """
+    folder_group_checker = get_folder_group_checker(user_details)
+    folder_rating_checker = get_folder_rating_checker(user_details)
+
+    folder_row = find_folder_by_id(folder_id)
+
+    if folder_row is None:
+        return None, generate_failure_response('Could not find requested folder',
+                                               messages=[msg_action_cancelled_wrong()])
+
+    if not folder_rating_checker(folder_row.rating):
+        return None, generate_failure_response('User is not allowed to see a folder with a higher rating limit',
+                                               messages=[msg_access_denied_content_rating()])
+
+    # App Admins see everything
+    if not folder_group_checker(folder_row):
+        return None, generate_failure_response('User is not allowed to see a folder that is owned by another group',
+                                               messages=[msg_access_denied_content_rating()])
+
+    return folder_row, None
+
+
+@media_blueprint.route('/keys/list', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def list_media_folder_keys(user_details: dict) -> tuple:
+    """
+    Retrieve all key/value rows stored for a folder.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+
+    Returns:
+    tuple: JSON response with the list of key/value rows and HTTP status code.
+    """
+    folder_id = clean_string(request.form.get('folder_id'))
+
+    if is_blank(folder_id):
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
+
+    folder_row, error = _acquire_folder_for_access(user_details, folder_id)
+    if error is not None:
+        return error
+
+    items = []
+    for row in find_media_folder_key_values(folder_id):
+        items.append({"id": row.id, "folder": row.folder_id, "key": row.key,
+                      "value": row.value if row.value is not None else "", "purpose": row.purpose})
+
+    return generate_success_response('', {'items': items})
+
+
+@media_blueprint.route('/keys/get', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def get_media_folder_key(user_details: dict) -> tuple:
+    """
+    Retrieve a single key/value row for a folder.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+
+    Returns:
+    tuple: JSON response with the key/value row and HTTP status code.
+    """
+    folder_id = clean_string(request.form.get('folder_id'))
+    row_id = clean_string(request.form.get('row_id'))
+
+    if is_blank(folder_id):
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
+
+    if is_blank(row_id):
+        return generate_failure_response('row_id parameter is required',
+                                         messages=[msg_missing_parameter('row_id')])
+
+    if not is_integer(row_id):
+        return generate_failure_response('row_id parameter is invalid', messages=[msg_invalid_parameter('row_id')])
+
+    folder_row, error = _acquire_folder_for_access(user_details, folder_id)
+    if error is not None:
+        return error
+
+    row = find_media_folder_key_value(folder_id, int(row_id))
+
+    if row is None:
+        return generate_failure_response('Key not found', messages=[msg_action_cancelled_wrong()])
+
+    return generate_success_response('', {'info': {"id": row.id, "folder": row.folder_id, "key": row.key,
+                                                   "value": row.value if row.value is not None else "",
+                                                   "purpose": row.purpose}})
+
+
+@media_blueprint.route('/keys/insert', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def insert_media_folder_key(user_details: dict) -> tuple:
+    """
+    Add a key/value row for a folder.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+
+    Returns:
+    tuple: JSON response with the status of the operation and HTTP status code.
+    """
+    folder_id = clean_string(request.form.get('folder_id'))
+    key = clean_string(request.form.get('key'))
+    value = clean_string(request.form.get('value'))
+    purpose = clean_string(request.form.get('purpose'))
+
+    if is_blank(folder_id):
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
+
+    if is_blank(key):
+        return generate_failure_response('key parameter is required', messages=[msg_missing_parameter('key')])
+
+    if is_not_blank(purpose) and not is_integer(purpose):
+        return generate_failure_response('purpose parameter is invalid', messages=[msg_invalid_parameter('purpose')])
+
+    folder_row, error = _acquire_folder_for_access(user_details, folder_id)
+    if error is not None:
+        return error
+
+    effective_value = value if is_not_blank(value) else None
+    effective_purpose = int(purpose) if is_not_blank(purpose) else MEDIA_FOLDER_KEY_PURPOSE_DEFAULT
+
+    row = add_media_folder_key_value(db.session, folder_id, key, effective_value, effective_purpose)
+    if row is None:
+        return generate_failure_response('Key already exists or other exception, please see log', 400,
+                                         messages=[msg_action_cancelled_wrong()])
+
+    return generate_success_response('Key added successfully', {'id': row.id},
+                                     messages=[msg_operation_complete()])
+
+
+@media_blueprint.route('/keys/update', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def update_media_folder_key(user_details: dict) -> tuple:
+    """
+    Update an existing key/value row for a folder.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+
+    Returns:
+    tuple: JSON response with the status of the operation and HTTP status code.
+    """
+    folder_id = clean_string(request.form.get('folder_id'))
+    row_id = clean_string(request.form.get('row_id'))
+    value = clean_string(request.form.get('value'))
+    purpose = clean_string(request.form.get('purpose'))
+
+    if is_blank(folder_id):
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
+
+    if is_blank(row_id):
+        return generate_failure_response('row_id parameter is required',
+                                         messages=[msg_missing_parameter('row_id')])
+
+    if not is_integer(row_id):
+        return generate_failure_response('row_id parameter is invalid', messages=[msg_invalid_parameter('row_id')])
+
+    if is_not_blank(purpose) and not is_integer(purpose):
+        return generate_failure_response('purpose parameter is invalid', messages=[msg_invalid_parameter('purpose')])
+
+    folder_row, error = _acquire_folder_for_access(user_details, folder_id)
+    if error is not None:
+        return error
+
+    effective_value = value if is_not_blank(value) else None
+    effective_purpose = int(purpose) if is_not_blank(purpose) else None
+
+    if update_media_folder_key_value(db.session, folder_id, int(row_id), effective_value, effective_purpose) is None:
+        return generate_failure_response('Key not found', messages=[msg_action_cancelled_wrong()])
+
+    return generate_success_response('Key updated successfully', messages=[msg_operation_complete()])
+
+
+@media_blueprint.route('/keys/delete', methods=['POST'])
+@feature_required(media_blueprint, MANAGE_MEDIA)
+def delete_media_folder_key(user_details: dict) -> tuple:
+    """
+    Remove a key/value row for a folder.
+
+    Args:
+    user_details (dict): Details of the authenticated user.
+
+    Returns:
+    tuple: JSON response with the status of the operation and HTTP status code.
+    """
+    folder_id = clean_string(request.form.get('folder_id'))
+    row_id = clean_string(request.form.get('row_id'))
+
+    if is_blank(folder_id):
+        return generate_failure_response('folder_id parameter is required',
+                                         messages=[msg_missing_parameter('folder_id')])
+
+    if is_blank(row_id):
+        return generate_failure_response('row_id parameter is required',
+                                         messages=[msg_missing_parameter('row_id')])
+
+    if not is_integer(row_id):
+        return generate_failure_response('row_id parameter is invalid', messages=[msg_invalid_parameter('row_id')])
+
+    folder_row, error = _acquire_folder_for_access(user_details, folder_id)
+    if error is not None:
+        return error
+
+    if remove_media_folder_key_value(db.session, folder_id, int(row_id)):
+        return generate_success_response('Key removed successfully', messages=[msg_operation_complete()])
+    else:
+        return generate_failure_response('Key not found', messages=[msg_action_cancelled_wrong()])

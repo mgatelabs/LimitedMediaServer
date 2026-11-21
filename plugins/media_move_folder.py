@@ -15,6 +15,20 @@ class MoveFolderTask(ActionMediaFolderPlugin):
     """
     Move a folder to another folder
     """
+    AI_QUICK_DESCRIPTION = ('Re-parents a media folder inside the folder tree - under the '
+                            'given destination folder, or back up to the root when no '
+                            'destination is given. Only the database pointer changes; no files '
+                            'are moved.')
+    AI_LONG_DESCRIPTION = (
+        'Moves a folder to a new position in the media folder tree. When the Destination folder '
+        'is given, the folder becomes a child of that folder; when Destination is left blank, '
+        'the folder is moved back up to the root level. This is a database re-parenting only - '
+        'the parent pointer is updated and committed, while all files and their disks remain '
+        'untouched. Three safety rules abort the move (reported as failures): the destination '
+        'folder must not have a higher rating than the source folder, and the security-group '
+        'ownership must be compatible - a folder belonging to a group cannot be placed under a '
+        'folder owned by a different group, and a groupless folder cannot be placed under a '
+        'group-owned one.')
 
     def __init__(self):
         super().__init__()

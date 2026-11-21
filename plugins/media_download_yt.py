@@ -1,3 +1,4 @@
+from datetime import date as date_type
 import argparse
 import os.path
 import subprocess
@@ -18,6 +19,18 @@ class DownloadYtPlugin(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
+    AI_QUICK_DESCRIPTION = ('Downloads a video (or playlist/page) with yt-dlp, recodes it to MP4 '
+                            'with the thumbnail embedded, and ingests the result into a media folder.')
+    AI_LONG_DESCRIPTION = (
+        'Uses the yt-dlp command-line tool to download a video - a single video link, a playlist, '
+        'or a page - into a temporary folder and then ingests each produced file into the chosen '
+        'media folder. The download is forced to MP4/M4A (yt-dlp "-S res,ext:mp4:m4a" "--recode '
+        'mp4") and the video\'s thumbnail is embedded. Every file written into the temp folder is '
+        'registered in the database (guessed MIME type) and moved into storage on the chosen '
+        'disk (Primary or Archive, default Primary); files with an unknown MIME type are skipped '
+        'with a warning. Requires the yt-dlp executable to be installed and reachable on PATH '
+        'plus an ffmpeg codec for the recode. Required argument: URL. Destination is optional '
+        'with a default of Primary Disk.')
 
     def __init__(self):
         super().__init__()
@@ -137,6 +150,9 @@ class DownloadYtJob(TaskWrapper):
                                        self.archive_path, db_session, self):
                             if self.can_debug():
                                 self.debug(f'Ingested: {item}')
+
+                source_row.last_date = date_type.today()
+                db_session.commit()
 
             else:
                 self.error(f'Return Code {return_code}')

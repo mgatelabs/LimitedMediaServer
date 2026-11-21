@@ -1,9 +1,14 @@
 import os
+import shutil
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageFile
 
 from thread_utils import TaskWrapper
+
+# Book scans can legitimately be extremely tall; do not trip PIL's
+# decompression bomb limit for them
+Image.MAX_IMAGE_PIXELS = None
 
 
 def resize_image(input_path, output_path, target_width, file_format='PNG'):
@@ -95,10 +100,124 @@ def crop_and_resize(input_path, output_path, size, side=False):
     print(f"Image cropped and resized, saved to {output_path}")
 
 
+# Hard WebP limit: no dimension may exceed this value
+WEBP_MAX_DIMENSION = 16383
+
+# Width cap: images wider than this are scaled down (screen display, saves space)
+MAX_DISPLAY_WIDTH = 2048
+
+
+def _convert_single_image(filepath: str, output_path: str) -> list[str]:
+    """
+    Load one image and normalize it entirely in memory: RGBA and CMYK are
+    always converted to RGB, 1-bit images are converted to grayscale when they
+    need scaling, a width above 2048 is scaled down, and a height above the
+    hard WebP limit is sliced into uniform pieces.
+
+    Returns the list of files written (one when not split, one per slice
+    when split).  Slices are written as temporary files in the same folder
+    for the caller to renumber.  Raises an exception on failure.
+    """
+    with Image.open(filepath) as img:
+        img.load()
+
+        modified = False
+
+        needs_resize = img.width > MAX_DISPLAY_WIDTH or img.height > WEBP_MAX_DIMENSION
+
+        # RGBA and CMYK are always stripped (accidental alpha only bloats comic
+        # pages).  Modes other than RGB/L are converted before any scaling, so
+        # LANCZOS never resamples in the wrong color space: 1-bit becomes
+        # grayscale to keep a little fuzziness, everything else becomes RGB.
+        if img.mode in ('RGBA', 'CMYK') or (needs_resize and img.mode not in ('RGB', 'L')):
+            target_mode = 'L' if (needs_resize and img.mode == '1') else 'RGB'
+            img = img.convert(target_mode)
+            modified = True
+
+        # Scale down images that are too wide
+        if img.width > MAX_DISPLAY_WIDTH:
+            new_height = max(1, int(img.height * (MAX_DISPLAY_WIDTH / float(img.width))))
+            img = img.resize((MAX_DISPLAY_WIDTH, new_height), Image.LANCZOS)
+            modified = True
+
+        if not modified and filepath.lower().endswith('.webp'):
+            # Already a WebP that needs nothing done to it
+            return []
+
+        if img.height > WEBP_MAX_DIMENSION:
+            # Split into uniform slices (rounded up so all pieces are the same size)
+            slice_count = (img.height + WEBP_MAX_DIMENSION - 1) // WEBP_MAX_DIMENSION
+            step = (img.height + slice_count - 1) // slice_count
+            src_name = os.path.basename(filepath)
+            pieces = []
+            for i in range(slice_count):
+                box = (0, i * step, img.width, min((i + 1) * step, img.height))
+                piece_path = os.path.join(os.path.dirname(filepath), f'___{src_name}_slice_{i}.webp')
+                img.crop(box).save(piece_path, format='WEBP', lossless=True)
+                pieces.append(piece_path)
+            return pieces
+
+        img.save(output_path, format='WEBP', lossless=True)
+        return [output_path]
+
+
+def _renumber_folder(folder_path: str, logger: TaskWrapper) -> None:
+    """
+    Rename every WebP image in the folder sequentially (0001.webp, 0002.webp,
+    ...).
+    """
+    files = sorted(f for f in os.listdir(folder_path)
+                   if f.lower().endswith('.webp') and os.path.isfile(os.path.join(folder_path, f)))
+
+    if not files:
+        return
+
+    # Move to neutral temp names first so sequential renaming never
+    # collides with an existing page name
+    temp_names = []
+    for filename in files:
+        temp_name = f'___renumber_{filename}'
+        shutil.move(os.path.join(folder_path, filename), os.path.join(folder_path, temp_name))
+        temp_names.append(temp_name)
+
+    for index, temp_name in enumerate(temp_names, 1):
+        final_name = f'{str(index).zfill(4)}.webp'
+        final_path = os.path.join(folder_path, final_name)
+        if os.path.exists(final_path):
+            os.remove(final_path)
+        shutil.move(os.path.join(folder_path, temp_name), final_path)
+
+    if logger.can_debug():
+        logger.debug(f'Renumbered {len(files)} images in {folder_path}')
+
+
+def _remove_temp_slices(folder_path: str, logger: TaskWrapper) -> None:
+    """
+    Remove leftover slice temp files (___*.webp) from a crashed or partially
+    completed conversion run, so they never get mistaken for real pages.
+    """
+    for entry in os.listdir(folder_path):
+        if entry.startswith('___') and os.path.isfile(os.path.join(folder_path, entry)):
+            logger.debug(f'Removing leftover temp file: {entry}')
+            try:
+                os.remove(os.path.join(folder_path, entry))
+            except OSError:
+                pass
+
+
 def convert_images_to_format(input_folder: str, image_format: str, logger: TaskWrapper) -> bool:
     """
-    Converts all images in the given folder to the specific format.
-    Keeps the same filename but changes the extension.
+    Converts all images in the given folder to lossless WebP and corrects
+    each image to fit the hard WebP dimension limit: RGBA and CMYK are
+    always converted to RGB, modes that do not resample well (1-bit to
+    grayscale, palette and others to RGB) are converted when the image
+    needs scaling, any width above 2048 is scaled down, and any image
+    taller than 16383 pixels is split into uniform slices — after which
+    every image in the folder is renumbered sequentially (0001.webp,
+    0002.webp, ...).
+
+    Any non-image file in the folder is removed.  The ``image_format``
+    argument is kept for signature compatibility; output is always WEBP.
     """
     result = False
 
@@ -107,43 +226,64 @@ def convert_images_to_format(input_folder: str, image_format: str, logger: TaskW
         logger.error(f"Error: The folder '{input_folder}' does not exist.")
         return result
 
-    # Supported image formats
-    if image_format == 'WEBP':
-        extension = '.webp'
-        supported_formats = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff')
-    elif image_format == 'PNG':
-        extension = '.png'
-        supported_formats = ('.jpg', '.jpeg', '.webp', '.bmp', '.tiff')
-    else:
+    if image_format not in ('WEBP', 'PNG'):
         logger.error('Unknown Image Output Format')
         return False
 
-    # Process each file in the folder
-    files = os.listdir(input_folder)
-    total = len(files)
-    count = 0
+    supported_formats = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp')
+
+    # Remove leftover slices from a previously crashed conversion run
+    _remove_temp_slices(input_folder, logger)
+
+    # Remove anything in the folder that is not a usable image
+    for filename in os.listdir(input_folder):
+        filepath = os.path.join(input_folder, filename)
+        if not os.path.isfile(filepath) or filename.lower().endswith(supported_formats):
+            continue
+        if not is_valid_image(filepath):
+            logger.debug(f"Removing non-image file: {filename}")
+            try:
+                os.remove(filepath)
+            except OSError:
+                pass
+
+    files = sorted(f for f in os.listdir(input_folder)
+                   if os.path.isfile(os.path.join(input_folder, f))
+                   and f.lower().endswith(supported_formats))
+
+    # A split happened, so the whole folder gets renumbered after the pass
+    needs_renumber = False
+
     for filename in files:
         filepath = os.path.join(input_folder, filename)
-        count = count + 1
-        logger.update_percent((count / total) * 100.0)
-        if os.path.isfile(filepath) and filename.lower().endswith(supported_formats):
-            try:
-                with Image.open(filepath) as img:
-                    # Generate output file path with .webp extension
-                    output_path = os.path.splitext(filepath)[0] + extension
+        try:
+            previous_truncated = ImageFile.LOAD_TRUNCATED_IMAGES
+            ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-                    # Save image in non-lossy WebP format
-                    img.save(output_path, format=image_format, lossless=True)
+            base, _ = os.path.splitext(filepath)
+            already_webp = filename.lower().endswith('.webp')
+            output_path = filepath if already_webp else base + '.webp'
 
-                    result = True
+            pieces = _convert_single_image(filepath, output_path)
 
-                    if logger.can_trace():
-                        logger.trace(f"Converted '{filename}' to '{os.path.basename(output_path)}'")
-                # Remove the source file
+            if len(pieces) > 1:
+                # The original is now fully contained in its slices
+                needs_renumber = True
+                os.remove(filepath)
+            elif not already_webp:
                 os.remove(filepath)
 
-            except Exception as e:
-                print(f"Failed to convert '{filename}': {e}")
+            result = True
+
+            if logger.can_trace():
+                logger.trace(f"Converted '{filename}' to WebP ({len(pieces)} part(s))")
+        except Exception as e:
+            logger.warn(f"Failed to convert '{filename}': {e}")
+        finally:
+            ImageFile.LOAD_TRUNCATED_IMAGES = previous_truncated
+
+    if needs_renumber:
+        _renumber_folder(input_folder, logger)
 
     return result
 
@@ -243,7 +383,7 @@ def split_and_save_image(image_path: str, position: int, is_horizontal: bool, ke
         cropped_img.save(image_path, format=format_value, lossless=True)
 
 
-def merge_two_images(image_a_path: str, image_b_path: str):
+def merge_two_images(image_a_path: str, image_b_path: str, is_horizontal: bool = False):
     try:
         if image_a_path.lower().endswith('.png'):
             extension = '.png'
@@ -252,37 +392,88 @@ def merge_two_images(image_a_path: str, image_b_path: str):
             extension = '.webp'
             format_value = 'WEBP'
         else:
-            # Wrong ending
-            return False
+            raise ValueError(f"Unsupported file type: {os.path.splitext(image_a_path)[1]}")
 
         # Open both images
         image_a = Image.open(image_a_path)
         image_b = Image.open(image_b_path)
 
-        # Check if the widths are the same
-        if image_a.width != image_b.width:
-            return False
+        if is_horizontal:
+            if image_a.height != image_b.height:
+                # Scale the taller image down to match the shorter one
+                target_h = min(image_a.height, image_b.height)
+                if image_a.height != target_h:
+                    image_a = image_a.resize((int(image_a.width * target_h / image_a.height), target_h), Image.LANCZOS)
+                else:
+                    image_b = image_b.resize((int(image_b.width * target_h / image_b.height), target_h), Image.LANCZOS)
+            new_image = Image.new("RGB", (image_a.width + image_b.width, image_a.height))
+            new_image.paste(image_a, (0, 0))
+            new_image.paste(image_b, (image_a.width, 0))
+        else:
+            if image_a.width != image_b.width:
+                # Scale the wider image down to match the narrower one
+                target_w = min(image_a.width, image_b.width)
+                if image_a.width != target_w:
+                    image_a = image_a.resize((target_w, int(image_a.height * target_w / image_a.width)), Image.LANCZOS)
+                else:
+                    image_b = image_b.resize((target_w, int(image_b.height * target_w / image_b.width)), Image.LANCZOS)
+            new_image = Image.new("RGB", (image_a.width, image_a.height + image_b.height))
+            new_image.paste(image_a, (0, 0))
+            new_image.paste(image_b, (0, image_a.height))
 
-        # Calculate the new height (sum of both images' heights)
-        new_height = image_a.height + image_b.height
-
-        # Create a new image with the same width and new height
-        new_image = Image.new("RGB", (image_a.width, new_height))
-
-        # Paste image A at the top and image B right below it
-        new_image.paste(image_a, (0, 0))
-        new_image.paste(image_b, (0, image_a.height))
-
-        # Overwrite A's path with a PNG extension
         output_path = os.path.splitext(image_a_path)[0] + extension
-        new_image.save(output_path, format_value, lossless=True)
+        save_kwargs = {'lossless': True} if format_value == 'WEBP' else {}
+        new_image.save(output_path, format_value, **save_kwargs)
 
         # Delete image B
         os.unlink(image_b_path)
 
         return True
+    except ValueError:
+        raise
     except Exception as e:
         raise ValueError(f"An error occurred: {e}")
+
+
+def split_image_into_pieces(source_path: str, positions: list[int],
+                            is_horizontal: bool, output_dir: str,
+                            tmp_prefix: str = '__split_tmp_') -> list[str]:
+    """
+    Crop source_path into len(positions)+1 WEBP lossless pieces at the given
+    pixel offsets. Writes temp files to output_dir and returns their paths.
+
+    Raises ValueError if positions are not strictly increasing or exceed the
+    relevant image dimension.
+    """
+    with Image.open(source_path) as img:
+        width, height = img.size
+        dimension = height if is_horizontal else width
+
+        prev = 0
+        for pos in positions:
+            if pos <= prev:
+                raise ValueError(
+                    f"Position {pos} must be greater than previous position {prev}")
+            if pos >= dimension:
+                raise ValueError(
+                    f"Position {pos} is out of bounds for dimension {dimension}")
+            prev = pos
+
+        boundaries = [0] + list(positions) + [dimension]
+        tmp_paths = []
+
+        for i, (start, end) in enumerate(zip(boundaries, boundaries[1:])):
+            if is_horizontal:
+                box = (0, start, width, end)
+            else:
+                box = (start, 0, end, height)
+
+            piece = img.crop(box)
+            tmp_path = os.path.join(output_dir, f"{tmp_prefix}{i:04d}.webp")
+            piece.save(tmp_path, format='WEBP', lossless=True)
+            tmp_paths.append(tmp_path)
+
+    return tmp_paths
 
 
 def is_valid_image(filepath):

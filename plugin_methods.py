@@ -78,6 +78,11 @@ def plugin_select_values(*args) -> list:
 PLUGIN_VALUES_Y_N = plugin_select_values("No", 'n', 'Yes', 'y')
 
 
+FFMPEG_LOCAL_ONLY = plugin_select_arg('Local Encoding Only', 'local_encoding_only', 'n',
+                                      plugin_select_values('No', 'n', 'Yes', 'y'),
+                                      'Skip the remote encoder and encode locally (task weight 70).', adv='Y')
+
+
 def plugin_media_folder_chooser_move_folder_arg(arg_name: str, arg_id: str, arg_description: str = '',
                                                 prefix_lang_id: str = ''):
     return {
@@ -126,8 +131,12 @@ def add_logging_arg(args: list) -> list:
     result = args.copy()  # Copy the original arguments list
 
     # Append the logging argument to the list
-    result.append(plugin_select_arg("Logging Level", "_logging_level", "20", DEFAULT_LOGGING_VALUES, prefix_lang_id='com', adv='Y'))
-    result.append(plugin_select_arg("Prevent Duplicate Tasks", "_duplicate_checking", "y", PLUGIN_VALUES_Y_N, prefix_lang_id='com', adv='Y'))
+    result.append(plugin_select_arg("Logging Level", "_logging_level", "20", DEFAULT_LOGGING_VALUES,
+                                    'Minimum logging level for the task (0=Trace, 10=Debug, 20=Info, 30=Warning, 40=Error, 50=Critical).',
+                                    prefix_lang_id='com', adv='Y'))
+    result.append(plugin_select_arg("Prevent Duplicate Tasks", "_duplicate_checking", "y", PLUGIN_VALUES_Y_N,
+                                    'Skip the task if an identical task is already queued or running.',
+                                    prefix_lang_id='com', adv='Y'))
 
     # Ensure each argument has a description
     for row in result:

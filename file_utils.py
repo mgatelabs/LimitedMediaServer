@@ -124,8 +124,12 @@ def temporary_folder(base_folder=None, task_wrapper: TaskWrapper = NoOpTaskWrapp
     try:
         if task_wrapper.can_trace():
             task_wrapper.trace(f'Enter Temp Folder: {temp_folder}')
+        # Set the value
+        task_wrapper.temp_folder_path = temp_folder
         yield temp_folder
     finally:
+        # Clean the value
+        task_wrapper.temp_folder_path = None
         # Clean up the temporary folder
         shutil.rmtree(temp_folder, ignore_errors=True)
         if task_wrapper.can_trace():

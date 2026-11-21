@@ -13,6 +13,14 @@ class TestTask(ActionPlugin):
     """
     This is a utility task which will try to awake a local networked PC
     """
+    AI_QUICK_DESCRIPTION = ('A no-op self-test job that exercises the task runner by logging '
+                            'at every level and advancing progress over ~60 seconds.')
+    AI_LONG_DESCRIPTION = (
+        'Diagnostic job that does nothing to the data: it runs for up to 60 seconds, logging '
+        'once per second at the warn, info, debug, and trace levels and incrementally '
+        'updating its progress percentage. It is used to verify that the background task '
+        'runner, logging pipeline, and progress reporting are working. It can be cancelled '
+        'early. Takes no arguments and changes nothing.')
 
     def __init__(self):
         self.mac = None
@@ -69,12 +77,18 @@ class Test(TaskWrapper):
 
     def run(self, db_session):
 
+        percent_change = (1/60) * 100
+        current_percent = 0
+
         for i in range(60):
 
             self.warn(f'Loop Warn {i}')
             self.info(f'Loop Info {i}')
             self.debug(f'Loop Debug {i}')
             self.trace(f'Loop Trace {i}')
+
+            self.update_progress(current_percent)
+            current_percent = current_percent + percent_change
 
             # Perform your action here
             time.sleep(1)  # Wait for 1000 ms (1 second) in each loop

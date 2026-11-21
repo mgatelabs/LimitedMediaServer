@@ -22,6 +22,21 @@ class CheckFolderIntegrityTask(ActionMediaFolderPlugin):
     """
     Check the integrify of a single folder
     """
+    AI_QUICK_DESCRIPTION = ('Checks one media folder for database and disk mismatches - files '
+                            'missing from the expected disk, files on the wrong disk, and '
+                            'preview-flag and preview-file mismatches - and can auto-fix them.')
+    AI_LONG_DESCRIPTION = (
+        'Verifies that the database agrees with what is actually on disk for every file in one '
+        'folder. Each file record is checked for: the data file existing on the disk its archive '
+        'flag points to (if it is on the other disk instead, it is flagged as "wrong drive"), the '
+        'data file existing anywhere at all (if not, the record is flagged as missing), and the '
+        'preview image on disk matching the record\'s preview flag (an orphaned image is flagged '
+        'as unlinked, a flag without an image as missing). Fix Issues (default No) controls '
+        'whether corrections are applied: flip the archive flag for wrong-drive files, delete '
+        'DB records that have no file on either disk (and remove their orphaned preview image), '
+        'and reconcile preview flags. When No, the pass is report-only and logs every problem '
+        'found. This variant only inspects files that already have database records; it does not '
+        'scan the disks for unregistered files.')
 
     def __init__(self):
         super().__init__()
@@ -68,6 +83,22 @@ class CheckAllFolderIntegrityTask(ActionMediaPlugin):
     """
     Check the integrify of every folder
     """
+    AI_QUICK_DESCRIPTION = ('Checks every media folder for database and disk mismatches, and '
+                            'can scan the raw disks for unregistered files, logging or auto-'
+                            'fixing what it finds.')
+    AI_LONG_DESCRIPTION = (
+        'The server-wide version of the single-folder integrity check. When Check files is No '
+        '(the default) it walks every media folder in the database and applies the same checks '
+        'to each: data file present on the disk the archive flag points to, data file present '
+        'anywhere, and the preview image on disk matching the record\'s preview flag. When '
+        'Check files is Yes, it first scans the primary and archive disks for ".dat" files that '
+        'are not attached to any database record (logged with size and detected format) and for '
+        'leftover ".png" preview images. Fix Issues (default No) applies corrections: flip the '
+        'archive flag for wrong-drive files, delete dangling DB records along with their '
+        'orphaned preview images, reconcile preview flags, and - for unregistered disk files - '
+        're-register them as new records in the given Restore Folder (only mp4 files are '
+        'registered as video; everything else is registered as text/plain). Without Fix Issues, '
+        'the whole pass is report-only.')
 
     def __init__(self):
         super().__init__()

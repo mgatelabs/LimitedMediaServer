@@ -16,6 +16,19 @@ class CleanFolderTask(ActionMediaFolderPlugin):
     """
     Remove files that don't exist
     """
+    AI_QUICK_DESCRIPTION = ('Finds and removes duplicate MP3 files in a media folder, with an '
+                            'optional second folder to compare against.')
+    AI_LONG_DESCRIPTION = (
+        'Scans the audio/mpeg (MP3) files in the current media folder - or in the current folder '
+        'PLUS a second, user-chosen folder when Other Folder is supplied - and removes duplicates '
+        'according to the chosen Mode. In De-Duplicate mode a file is erased when its full '
+        'filename is identical to the immediately preceding file\'s. In De-Duplicate (Artist - '
+        'Title) mode the comparison key is the cleaned, lower-cased filename with any trailing '
+        '[...] suffix stripped, so different takes of the same "Artist - Title" are treated as '
+        'duplicates. The Font Numbers mode only reports which filenames carry a leading numeric '
+        'prefix; it does not rename or delete anything. Each removed file is deleted from both '
+        'disk (primary or archive, matching the file\'s location) and the database. Destructive: '
+        'the erased copies cannot be recovered. Mode is required; Other Folder is optional.')
     def __init__(self):
         super().__init__()
 

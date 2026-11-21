@@ -13,6 +13,32 @@ def value_is_mac_address(value: str) -> str | None:
     return None
 
 
+def value_is_mac_list(value: str) -> str | None:
+    """
+    Validate if the given value is a semicolon separated list of
+    NAME@MAC_ADDRESS entries (a bare MAC address is also allowed).
+    """
+    if not value or not value.strip():
+        return "Value must not be empty"
+
+    for entry in value.split(';'):
+        entry = entry.strip()
+        if not entry:
+            return "Value contains an empty entry"
+        if '@' in entry:
+            name, mac = entry.rsplit('@', 1)
+            name = name.strip()
+            mac = mac.strip()
+            if not name:
+                return f"Entry '{entry}' is missing a name before the @ symbol"
+        else:
+            mac = entry
+        error = value_is_mac_address(mac)
+        if error:
+            return f"Entry '{entry}': " + error
+    return None
+
+
 def value_is_folder(value: str) -> str | None:
     """
     Validate if the given value is a folder path.

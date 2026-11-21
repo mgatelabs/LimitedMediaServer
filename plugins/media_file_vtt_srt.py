@@ -30,6 +30,18 @@ class Vtt2SrtForFilePlugin(ActionMediaFilePlugin):
     """
     Subtitle a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Converts one WebVTT (text/vtt) subtitle file to SRT, shifting its '
+                            'times by an optional offset, and registers the .srt as a new file '
+                            'in the same folder.')
+    AI_LONG_DESCRIPTION = (
+        'Converts a single WebVTT subtitle file (the target must already be a VTT file with MIME '
+        'type text/vtt - anything else is rejected with an error) into an SRT file. The '
+        'conversion applies an optional signed Offset in seconds to all cue timestamps. The new '
+        '.srt file - same base name as the source, .srt extension - is registered as a new media '
+        'file in the source file\'s folder (always on the primary disk, never archive) and moved '
+        'into place. The original .vtt file is left untouched; it is not deleted or renamed. '
+        'No video, no encoding, no ffmpeg. The only argument is the optional Offset in seconds '
+        '(default 0; must be a signed integer).')
 
     def __init__(self):
         super().__init__()
@@ -86,6 +98,18 @@ class Vtt2SrtForFilesPlugin(ActionMediaFilesPlugin):
     """
     Subtitle a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Converts a comma-separated list of WebVTT subtitle files to SRT, '
+                            'shifting their times by an optional offset, registering each .srt '
+                            'as a new file.')
+    AI_LONG_DESCRIPTION = (
+        'The multi-file version of the VTT-to-SRT action. Takes a comma-separated list of file '
+        'ids; every target must already be a WebVTT file (MIME type text/vtt) - entries that are '
+        'not are reported as errors and skipped. For each valid file the WebVTT content is '
+        'converted to SRT with the optional signed Offset (in seconds) applied to all cue '
+        'timestamps, and the resulting .srt file (same base name, .srt extension) is registered '
+        'as a new media file in that file\'s folder on the primary disk. The original .vtt '
+        'files are left untouched. No video, no encoding, no ffmpeg. The only argument is the '
+        'optional Offset in seconds (default 0; must be a signed integer).')
 
     def __init__(self):
         super().__init__()

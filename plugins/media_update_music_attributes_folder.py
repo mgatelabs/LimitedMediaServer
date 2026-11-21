@@ -18,6 +18,20 @@ class Mp3TagFolderTask(ActionMediaFolderPlugin):
     """
     Remove files that don't exist
     """
+    AI_QUICK_DESCRIPTION = ('Writes ID3 tags onto every MP3 file in one folder: the given '
+                            'Genre, Album, and Year, plus Artist and Title parsed from each '
+                            'filename, with any YouTube code found in the filename appended to '
+                            'the album name.')
+    AI_LONG_DESCRIPTION = (
+        'Tags all audio/mpeg files inside a single folder in place, using eyed3. Each file is '
+        'reloaded from its data location and written with the given Genre, Album, and Year '
+        'values verbatim - blank values still overwrite whatever the file currently has. The '
+        'Artist and Title are parsed from the filename (an "Artist - Title" style pattern); '
+        'whichever of the two could be parsed is written to the tag, while a part that cannot '
+        'be parsed is left as the file already has it. If the filename contains a YouTube video '
+        'code, the album tag for that file becomes "<Album> [<code>]" so re-downloads can be '
+        'matched back to the source video. Files whose type is not audio/mpeg are ignored. The '
+        'source files are rewritten in place; no copies are made.')
     def __init__(self):
         super().__init__()
 

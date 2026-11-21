@@ -1,4 +1,6 @@
 import inspect
+import logging
+import os
 import sys
 import threading
 import time
@@ -21,14 +23,28 @@ def get_caller_info():
     line_number = caller_frame.f_lineno
     return filename, line_number
 
+WORKER_NAMES = [
+    'Alan', 'Barry', 'Carl', 'Dean', 'Eddie', 'Frank', 'Gary', 'Harry',
+    'Ivan', 'Jack', 'Kevin', 'Larry', 'Mick', 'Neil', 'Oscar', 'Peter',
+    'Quinn', 'Ringo', 'Steve', 'Terry', 'Ulric', 'Vince', 'Wayne', 'Xavier',
+    'Yogi', 'Ziggy', 'Bruce', 'Clive', 'Derek', 'Ellis', 'Floyd', 'Grant',
+]
+
+
 class TaskWorker:
 
-    def __init__(self, index):
+    STATUS_IDLE = 'idle'
+    STATUS_RUNNING = 'running'
+    STATUS_WAITING = 'waiting'
+    STATUS_DEAD = 'dead'
+
+    def __init__(self, index, name):
         self.index = index
-        self.online = True
-        self.position = 0
+        self.name = name
+        self.status = self.STATUS_IDLE
         self.job = 0
-        self.wait_stamp = 0
+        self.created = time.time()
+        self.last_seen = time.time()
         self.lock_key = None
 
 class TaskManager:
@@ -36,9 +52,10 @@ class TaskManager:
     Manages a list of tasks with thread-safe operations.
     """
 
-    def __init__(self, max_capacity=100):
+    def __init__(self, key_lock_manager=None, max_capacity=100):
 
         self.known_workers: list[TaskWorker] = []
+        self.key_lock_manager = key_lock_manager
 
         self.task_queue = PriorityQueue()
         self.task_lookup: dict[int, TaskWrapper] = {}  # Map task IDs to task objects
@@ -49,14 +66,43 @@ class TaskManager:
         self.current_capacity = 0  # Capacity currently in use
 
     def get_worker_status(self):
+        now = time.time()
         result = []
-        for worker in self.known_workers:
-            result.append({'index': worker.index,'online': worker.online,'position': worker.position,'job': worker.job})
+        with self.lock:
+            for worker in self.known_workers:
+                task = self.running_tasks.get(worker.job)
+                result.append({
+                    'index': worker.index,
+                    'name': worker.name,
+                    'status': worker.status,
+                    'job': worker.job,
+                    'job_name': task.name if task else None,
+                    'job_description': task.description if task else None,
+                    'last_seen': worker.last_seen,
+                    'uptime': int(now - worker.created),
+                })
         return result
 
+    def _pick_worker_name(self) -> str:
+        active_names = [w.name for w in self.known_workers]
+        counts: dict[str, int] = {}
+        for name in active_names:
+            base = name.rsplit(' ', 1)[0]
+            counts[base] = counts.get(base, 0) + 1
+
+        for base in WORKER_NAMES:
+            if base not in counts:
+                return base
+
+        # All 32 names taken — append a generation number
+        min_base = min(WORKER_NAMES, key=lambda b: counts.get(b, 0))
+        return f'{min_base} {counts.get(min_base, 0) + 1}'
+
     def add_worker(self, index: int) -> TaskWorker:
-        new_worker = TaskWorker(index)
-        self.known_workers.append(new_worker)
+        with self.lock:
+            name = self._pick_worker_name()
+            new_worker = TaskWorker(index, name)
+            self.known_workers.append(new_worker)
         return new_worker
 
     def add_task(self, task: 'TaskWrapper'):
@@ -67,21 +113,18 @@ class TaskManager:
     def adjust_priority(self, task_id, new_priority) -> bool:
         with self.lock:
             if task_id in self.task_lookup:
-                task = self.task_lookup.pop(task_id)
+                task = self.task_lookup[task_id]
                 task.priority = new_priority
-                self.task_lookup[task.task_id] = task
                 self._rebuild_queue()
                 task.info(f"Priority adjusted to {new_priority}")
                 return True
         return False
 
     def _rebuild_queue(self):
-        # Clear and rebuild the priority queue with updated priorities
-        items = list(self.task_lookup.values())
-        while not self.task_queue.empty():
-            self.task_queue.get()
-        for item in items:
-            self.task_queue.put(item)
+        new_queue = PriorityQueue()
+        for item in self.task_lookup.values():
+            new_queue.put(item)
+        self.task_queue = new_queue
 
     def return_task_to_queue(self, task):
         """
@@ -89,95 +132,90 @@ class TaskManager:
         This is used when a processor is not ready to execute.
         """
         with self.lock:
-            # Ensure task was actually running
             if task.task_id not in self.running_tasks:
-                return  # or raise exception if you want strictness
+                return
 
-            # Remove from running tasks
             del self.running_tasks[task.task_id]
-
-            # Recalculate capacity
             self._update_weights()
-
-            # Move to end of its priority group
             task.retry_seq += 1
-
-            # Reinsert into queue
+            self.task_lookup[task.task_id] = task
             self.task_queue.put(task)
 
     def get_task_queue(self):
         """
-        Retrieve a task from the queue with strict priority group enforcement.
-        Only tasks matching the first task's priority will be considered for execution.
+        Retrieve the highest-priority task that can run right now.
+
+        Weight-blocked top task → block the queue (return None), preserving
+        capacity-fill semantics for high-weight barrier tasks.
+        Lock-blocked tasks → skip past them so other workers stay busy.
         """
         with self.lock:
-            # Skip it, no capacity
             if self.current_capacity >= self.max_capacity:
                 return None
 
             if self.task_queue.empty():
-                return None  # No tasks left
+                return None
 
-            temp_queue = []  # Temporary storage for tasks that can't run
-            eligible_tasks = []  # Tasks eligible to run (same priority group)
+            # Peek at the top task first for weight check
+            top = self.task_queue.get()
 
-            # Step 1: Identify the priority group
-            first_task = self.task_queue.get()
-            temp_queue.append(first_task)  # Hold the first task temporarily
+            if top.weight + self.current_capacity > self.max_capacity:
+                # Top task can't fit — block; nothing else should run ahead of it
+                self.task_queue.put(top)
+                return None
 
-            target_priority = first_task.priority
+            # Top task fits on capacity. Now check its lock.
+            # If unlocked, take it immediately.
+            klm = self.key_lock_manager
+            if klm is None or klm.acquire(top.get_locking_key()):
+                del self.task_lookup[top.task_id]
+                self.running_tasks[top.task_id] = top
+                self._update_weights()
+                return top
 
-            # Step 2: Collect all tasks with the same priority
+            # Top task is lock-blocked. Scan the rest for a runnable alternative.
+            skipped = [top]
+            chosen = None
+
             while not self.task_queue.empty():
                 task = self.task_queue.get()
-                if task.priority == target_priority:
-                    eligible_tasks.append(task)
-                else:
-                    temp_queue.append(task)
 
-            # Step 3: Check eligible tasks for capacity
-            for task in [first_task] + eligible_tasks:
-                if task.weight + self.current_capacity <= self.max_capacity:
+                if task.weight + self.current_capacity > self.max_capacity:
+                    # This and everything behind it may also be too heavy; put back and stop
+                    skipped.append(task)
+                    break
 
-                    # Put back skipped tasks
-                    for skipped_task in temp_queue + eligible_tasks:
-                        if skipped_task.task_id != task.task_id:  # Don't re-add the running task
-                            self.task_queue.put(skipped_task)
+                if klm is None or klm.acquire(task.get_locking_key()):
+                    chosen = task
+                    break
 
-                    self.running_tasks[task.task_id] = task
-                    self._update_weights()
+                skipped.append(task)
 
-                    return task
+            # Restore all skipped tasks
+            for s in skipped:
+                self.task_queue.put(s)
 
-            # Step 4: No eligible task could run, put everything back
-            for skipped_task in temp_queue + eligible_tasks:
-                self.task_queue.put(skipped_task)
+            if chosen is not None:
+                del self.task_lookup[chosen.task_id]
+                self.running_tasks[chosen.task_id] = chosen
+                self._update_weights()
+                return chosen
 
-            return None  # No task could fit in the current capacity
+            return None
 
     def _update_weights(self):
-        calculated_weight = 0
-        for running_task in self.running_tasks.values():
-            calculated_weight = calculated_weight + running_task.weight
-
-        self.current_capacity = calculated_weight
+        self.current_capacity = sum(t.weight for t in self.running_tasks.values())
 
     def task_done_queue(self, task: 'TaskWrapper', worker_status: TaskWorker):
-        worker_status.position = 88
         time.sleep(0.001)
         with self.lock:
             time.sleep(0.1)
-            worker_status.position = 89
-            if task.task_id in self.task_lookup:
-                self.finished_tasks[task.task_id] = task
-                del self.task_lookup[task.task_id]
-            worker_status.position = 90
-            if task.task_id in self.running_tasks:
-                del self.running_tasks[task.task_id]
-            worker_status.position = 91
+            self.finished_tasks[task.task_id] = task
+            self.task_lookup.pop(task.task_id, None)
+            self.running_tasks.pop(task.task_id, None)
             self._update_weights()
-            worker_status.position = 92
-            self.task_queue.task_done()
+        if self.key_lock_manager is not None:
+            self.key_lock_manager.release(task.get_locking_key())
 
     def get_finished_tasks(self):
         with self.lock:
@@ -189,22 +227,19 @@ class TaskManager:
             print("Finished tasks cleared.")
 
     def has_task(self, task_name: str, task_description: str) -> bool:
-        """
-        Check if there is an item in the QUEUE that already matches and isn't complete
-        :param task_name:
-        :param task_description:
-        :return: True if the task exists and isn't finished
-        """
         with self.lock:
-            for task in self.task_lookup.values():
-                if task.name == task_name and task.description == task_description and not task.is_finished:
-                    return True
+            for store in (self.task_lookup, self.running_tasks):
+                for task in store.values():
+                    if task.name == task_name and task.description == task_description and not task.is_finished:
+                        return True
         return False
 
     def get_task_by_id(self, task_id: int) -> Optional['TaskWrapper']:
         with self.lock:
             if task_id in self.task_lookup:
                 return self.task_lookup[task_id]
+            if task_id in self.running_tasks:
+                return self.running_tasks[task_id]
             if task_id in self.finished_tasks:
                 return self.finished_tasks[task_id]
             return None
@@ -214,32 +249,39 @@ class TaskManager:
         Remove dead tasks
         :return: Number of removed tasks
         """
+        stale_threshold = time.time() - 30
         with self.lock:
             before = len(self.known_workers)
             self.known_workers = [
-                known for known in self.known_workers
-                if not (known.position == 72 and 0 < known.wait_stamp < time.time() - 5)
+                w for w in self.known_workers
+                if not (w.status == TaskWorker.STATUS_IDLE and w.last_seen < stale_threshold)
             ]
             removed = before - len(self.known_workers)
         return removed
 
     def get_all_tasks(self) -> list['TaskWrapper']:
-        """
-        Get all tasks in the task list.
-
-        Returns:
-            tuple: A tuple containing all tasks.
-        """
         with self.lock:
-            # Combine tasks from both finished and pending
-            all_tasks = list(self.finished_tasks.values()) + list(self.task_lookup.values())
-
-            # Sort by task_id to maintain submission order
+            all_tasks = (
+                list(self.finished_tasks.values()) +
+                list(self.running_tasks.values()) +
+                list(self.task_lookup.values())
+            )
             return sorted(all_tasks, key=lambda task: task.task_id)
 
     def get_weight(self) -> int:
         return self.current_capacity
 
+
+    def purge_task(self, task_id: int) -> bool:
+        with self.lock:
+            if task_id in self.finished_tasks:
+                del self.finished_tasks[task_id]
+                return True
+            if task_id in self.task_lookup:
+                del self.task_lookup[task_id]
+                self._rebuild_queue()
+                return True
+        return False
 
     def clean_tasks(self, hard_clean: bool = True) -> int:
 
@@ -310,8 +352,12 @@ class TaskWrapper(ABC):
         self.post_task = None
         self.ref_book_id = ''
         self.ref_folder_id = ''
+        self.ref_folder_name = ''
         self.ref_folder_preview = False
         self._lock_key = None
+        self.temp_folder_path = None
+        self.expected_files_count = -1
+        self.expected_files_as_progress = False
 
     def __lt__(self, other: 'TaskWrapper'):
         return (self.priority, self.retry_seq, self.task_id) < (
@@ -372,6 +418,16 @@ class TaskWrapper(ABC):
 
     def run_after(self, task: 'TaskWrapper'):
         self.post_task = task
+
+    def get_progress(self):
+        if (self.expected_files_as_progress
+                and self.expected_files_count > 0
+                and self.temp_folder_path is not None
+                and os.path.exists(self.temp_folder_path)):
+            file_count = len(os.listdir(self.temp_folder_path))
+            return (file_count / self.expected_files_count) * 100
+        # Revert to basic value
+        return self.progress
 
     def update_logging_level(self, logging_level: int):
         """
@@ -456,116 +512,139 @@ class TaskWrapper(ABC):
         self.is_cancelled = True
         self.token.set_stop()
 
-    def critical(self, *args):
+    def critical(self, *args, _markdown=False, _json=False):
         """
         Log a critical message.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
         call_filename, call_line_number = get_caller_info()
-        self._add_log(self.CRITICAL, f"file: {call_filename}, line: {call_line_number}, message: {log_message}")
+        self._add_log(self.CRITICAL, f"file: {call_filename}, line: {call_line_number}, message: {log_message}", _markdown, _json)
 
-    def error(self, *args):
+    def error(self, *args, _markdown=False, _json=False):
         """
         Log an error message.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
         call_filename, call_line_number = get_caller_info()
-        self._add_log(self.ERROR, f"file: {call_filename}, line: {call_line_number}, message: {log_message}")
+        self._add_log(self.ERROR, f"file: {call_filename}, line: {call_line_number}, message: {log_message}", _markdown, _json)
 
-    def warn(self, *args):
+    def warn(self, *args, _markdown=False, _json=False):
         """
         Log a warning message.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
-        self._add_log(self.WARNING, log_message)
+        self._add_log(self.WARNING, log_message, _markdown, _json)
 
-    def info(self, *args):
+    def info(self, *args, _markdown=False, _json=False):
         """
         Log an info message.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
-        self._add_log(self.INFO, log_message)
+        self._add_log(self.INFO, log_message, _markdown, _json)
 
-    def always(self, *args):
+    def always(self, *args, _markdown=False, _json=False):
         """
         Log a message that is always logged regardless of the logging level.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
-        self._add_log(self.ALWAYS, log_message)
+        self._add_log(self.ALWAYS, log_message, _markdown, _json)
 
-    def debug(self, *args):
+    def debug(self, *args, _markdown=False, _json=False):
         """
         Log a debug message.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
-        self._add_log(self.DEBUG, log_message)
+        self._add_log(self.DEBUG, log_message, _markdown, _json)
 
-    def trace(self, *args):
+    def trace(self, *args, _markdown=False, _json=False):
         """
         Log a trace message.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
-        self._add_log(self.TRACE, log_message)
+        self._add_log(self.TRACE, log_message, _markdown, _json)
 
-    def add_log(self, *args):
+    def add_log(self, *args, _markdown=False, _json=False):
         """
         Add a log message with the ALWAYS severity.
 
         Args:
             *args: The message to be logged.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
         if all(arg is None for arg in args):
             return
         log_message = ' '.join(map(str, args))
-        self._add_log(self.ALWAYS, log_message)
+        self._add_log(self.ALWAYS, log_message, _markdown, _json)
 
-    def _add_log(self, severity, log_message):
+    def _add_log(self, severity, log_message, _markdown=False, _json=False):
         """
         Add a log message with a specific severity.
 
         Args:
             severity (int): The severity level of the log message.
             log_message (str): The log message.
+            _markdown (bool): Whether the message is in Markdown format.
+            _json (bool): Whether the message is in JSON format.
         """
+        # If it is TRACE, also dump to the logging stream
+        if self.logging_level == severity == self.TRACE:
+            logging.info(log_message)
+
         if severity >= self.logging_level or severity == self.ALWAYS:
             current_datetime = datetime.now()
             human_readable_timestamp = current_datetime.strftime("%Y-%m-%d %H:%M:%S")
-            self.log_entries.append({"s": severity, "time": human_readable_timestamp, "text": log_message})
+            fmt = "json" if _json else ("md" if _markdown else "txt")
+            self.log_entries.append({"s": severity, "time": human_readable_timestamp, "text": log_message, "fmt": fmt})
 
     def can_debug(self):
         """
@@ -605,7 +684,7 @@ class NoOpTaskWrapper(TaskWrapper):
     def __init__(self):
         super().__init__('No Op', 'No Op')
 
-    def _add_log(self, severity, log_message):
+    def _add_log(self, severity, log_message, _markdown=False, _json=False):
         print(f'{LOGGING_LEVEL_NAMES[severity]}-{log_message}')
 
     def run(self, db_session):

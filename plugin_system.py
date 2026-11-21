@@ -17,12 +17,17 @@ class ActionPlugin:
     """
     counter = 0  # Initialize the counter to 0 by default
 
+    # AI-facing metadata. Override per plugin class.
+    AI_QUICK_DESCRIPTION = ''
+    AI_LONG_DESCRIPTION = ''
+
     def __init__(self):
         super().__init__()
         self.type = 'ACTION'
         self.sort_group = self.get_sort()['id']
         self.sort_sequence = self.get_sort()['sequence']
         self.prefix_lang_id = ''
+        self.available_to_menu = True
 
     @classmethod
     def next_counter(cls):
@@ -40,11 +45,24 @@ class ActionPlugin:
             "prefix_lang_id": self.prefix_lang_id
         }
 
+    def get_ai_quick_description(self):
+        if is_not_blank(type(self).AI_QUICK_DESCRIPTION):
+            return type(self).AI_QUICK_DESCRIPTION
+        return self.get_action_name()
+
+    def get_ai_long_description(self):
+        if is_not_blank(type(self).AI_LONG_DESCRIPTION):
+            return type(self).AI_LONG_DESCRIPTION
+        return self.get_action_name() + ' action on the media server.'
+
     def get_type(self):
         return self.type
 
     def get_sort(self):
         return {'id': 'default', 'sequence': ActionPlugin.next_counter()}
+
+    def is_available_to_menu(self):
+        return self.available_to_menu
 
     def add_args(self, parser: argparse):
         raise NotImplementedError
@@ -163,7 +181,7 @@ class ActionBookGeneralPlugin(ActionPlugin):
         super().__init__()
         self.type = 'ACTIONBOOK'
         self.book_storage_folder = ''
-        self.book_storage_format = 'PNG'
+        self.book_storage_format = 'WEBP'
         self.processors = []
 
     def get_action_args(self):
@@ -201,7 +219,7 @@ class ActionBookSpecificPlugin(ActionPlugin):
         super().__init__()
         self.type = 'ACTIONBOOK'
         self.book_storage_folder = ''
-        self.book_storage_format = 'PNG'
+        self.book_storage_format = 'WEBP'
         self.processors = []
 
     def get_action_args(self):
@@ -358,3 +376,68 @@ class ActionMediaFilesPlugin(ActionPlugin):
         :return: False
         """
         return False
+
+
+def effective_arg_default(plugin_id: str, arg: dict, config: dict) -> str:
+    if arg.get('type') == 'select':
+        key = 'PLUGIN.DEFAULT.' + plugin_id + '_' + arg['id']
+        if key in config and config[key] != '':
+            return config[key]
+    return arg.get('default', '')
+
+
+def build_ai_arg(plugin_id: str, arg: dict, config: dict) -> dict:
+    default_value = effective_arg_default(plugin_id, arg, config)
+    item = {
+        'id': arg['id'],
+        'name': arg['name'],
+        'type': arg['type'],
+        'description': arg.get('description', ''),
+    }
+    if arg.get('type') == 'select':
+        item['values'] = [{'id': v['id'], 'name': v['name']} for v in arg.get('values', [])]
+    if default_value != '':
+        item['default'] = default_value
+    item['required'] = default_value == ''
+    return item
+
+
+def ai_args_for_plugin(plugin: ActionPlugin, config: dict) -> list:
+    plugin_id = plugin.get_action_id()
+    args = add_logging_arg(plugin.get_action_args())
+    return [build_ai_arg(plugin_id, arg, config) for arg in args]
+
+
+def _ai_arg_detail_line(arg: dict, default_value: str) -> str:
+    if default_value == '':
+        line = '- ' + arg['id'] + ' (' + arg['type'] + ', required) '
+    else:
+        line = '- ' + arg['id'] + ' (' + arg['type'] + ', default=' + default_value + ') '
+    line += arg['name'] + ' - ' + arg.get('description', '')
+    if arg.get('type') == 'select':
+        values_text = ', '.join('"' + v['id'] + '"=' + v['name'] for v in arg.get('values', []))
+        line += ' values: ' + values_text
+    return line
+
+
+def ai_usage_notes(plugin: ActionPlugin, config: dict) -> str:
+    plugin_id = plugin.get_action_id()
+    args = add_logging_arg(plugin.get_action_args())
+    lines = [plugin.get_ai_long_description()]
+    for arg in args:
+        lines.append(_ai_arg_detail_line(arg, effective_arg_default(plugin_id, arg, config)))
+
+    overrides = []
+    for arg in args:
+        if arg.get('type') != 'select':
+            continue
+        effective = effective_arg_default(plugin_id, arg, config)
+        if effective != '' and effective != arg.get('default', ''):
+            overrides.append('PLUGIN.DEFAULT.' + plugin_id + '_' + arg['id'] + '=' + effective)
+
+    if overrides:
+        lines.append('System override defaults in effect: ' + ', '.join(overrides) + '.')
+    else:
+        lines.append('System override defaults in effect: none.')
+
+    return '\n'.join(lines)

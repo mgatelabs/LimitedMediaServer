@@ -4,11 +4,11 @@ from typing import Optional, List, Tuple
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy import desc, func, or_
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import NoResultFound, IntegrityError
 from sqlalchemy.orm import aliased
 
 from date_utils import convert_yyyymmdd_to_date
-from db import Book, Chapter, VolumeProgress, VolumeBookmark, db, Tag
+from db import Book, Chapter, VolumeProgress, VolumeBookmark, BookKeyValue, db, Tag
 from filename_utils import compress_filenames
 from text_utils import is_not_blank
 from thread_utils import TaskWrapper
@@ -198,11 +198,14 @@ def find_chapter_by_sequence(book_id: str, sequence: int) -> Optional[Chapter]:
 
 
 def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Optional[int] = None,
-                       tags: list[str] = [], db_session: Session = db.session):
+                       tags: list[str] = [], filter_type: str = "", processors: list[str] = [],
+                       db_session: Session = db.session):
     """
     Used to share book search functionality
+    :param filter_type:
     :param max_rating:
     :param filter_text:
+    :param processors: optional list of processor IDs to filter by (any may match)
     :return:
     """
 
@@ -233,10 +236,19 @@ def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Op
         query = query.filter(
             or_(
                 Book.name.like(f'%{filter_text}%'),
+                Book.alt_name.like(f'%{filter_text}%'),
                 Book.id.like(f'%{filter_text}%'),
                 Book.tags.like(f'%{filter_text}%')
             )
         )
+
+    if is_not_blank(filter_type):
+        query = query.filter(Book.style == filter_type)
+
+    if processors:
+        processors_normalized = [p.strip() for p in processors if p.strip()]
+        if processors_normalized:
+            query = query.filter(Book.processor.in_(processors_normalized))
 
     if tags:
         # Normalize tags to uppercase (to match how we store them)
@@ -250,13 +262,16 @@ def _build_books_query(max_rating: int = 0, filter_text: str = None, user_id: Op
     return query
 
 
-def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_text: str = None, tags: list[str] = [],
+def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_type="", filter_text: str = None,
+                                     tags: list[str] = [], processors: list[str] = [],
                                      db_session: Session = db.session):
     """
     Used to share book search functionality
+    :param filter_type:
     :param max_rating:
     :param filter_text:
     :param tags: optional list of tag names to filter by (all must match)
+    :param processors: optional list of processor IDs to filter by (any may match)
     :return:
     """
 
@@ -292,10 +307,19 @@ def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_t
         query = query.filter(
             or_(
                 Book.name.like(f'%{filter_text}%'),
+                Book.alt_name.like(f'%{filter_text}%'),
                 Book.id.like(f'%{filter_text}%'),
                 Book.tags.like(f'%{filter_text}%')
             )
         )
+
+    if is_not_blank(filter_type):
+        query = query.filter(Book.style == filter_type)
+
+    if processors:
+        processors_normalized = [p.strip() for p in processors if p.strip()]
+        if processors_normalized:
+            query = query.filter(Book.processor.in_(processors_normalized))
 
     if tags:
         # Normalize tags to uppercase (to match how we store them)
@@ -311,12 +335,14 @@ def _build_books_with_progress_query(user_id: int, max_rating: int = 0, filter_t
 
 # Function to list books with a rating less than or equal to max_rating
 def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None, filter_tags: list[str] = [],
-                          sort_field=None,
-                          sort_descending: bool = False, query_offset: int = 0, query_limit: int = 0,
-                          db_session: Session = db.session) -> List[tuple[Book, VolumeProgress]]:
+                          filter_type: str = "", filter_processors: list[str] = [], sort_field=None,
+                          sort_descending: bool = False, query_offset: int = 0,
+                          query_limit: int = 0, db_session: Session = db.session) -> List[tuple[Book, VolumeProgress]]:
     """
     List the books that a user has access to based upon their criteria and the search window
     :param filter_tags:
+    :param filter_type:
+    :param filter_processors: If not empty, the book's processor must match one of these IDs
     :param max_rating:
     :param filter_text: If not blank, the book title must have this text
     :param sort_field: The field to sort against
@@ -327,7 +353,9 @@ def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None
     :param db_session:
     :return:
     """
-    query = _build_books_with_progress_query(user_id, max_rating, filter_text, tags=filter_tags, db_session=db_session)
+    query = _build_books_with_progress_query(user_id, max_rating, filter_text=filter_text, tags=filter_tags,
+                                             filter_type=filter_type, processors=filter_processors,
+                                             db_session=db_session)
 
     if sort_descending:
         query = query.order_by(sort_field.desc(), Book.id.desc())
@@ -344,25 +372,31 @@ def list_books_for_rating(user_id: int, max_rating: int, filter_text: str = None
 
 
 # Function to count the books with a rating less than or equal to max_rating
-def count_books_for_rating(max_rating: int, filter_text: str = None, filter_tags: list[str] = []) -> int:
+def count_books_for_rating(max_rating: int, filter_text: str = None, filter_tags: list[str] = [],
+                           filter_type: str = "", filter_processors: list[str] = []) -> int:
     """
     This is the result count for list_books_for_rating
+    :param filter_type:
     :param max_rating:
     :param filter_text:
+    :param filter_processors: If not empty, the book's processor must match one of these IDs
     :return:
     """
-    return _build_books_query(max_rating, filter_text, tags=filter_tags).count()
+    return _build_books_query(max_rating, filter_text, tags=filter_tags, filter_type=filter_type,
+                              processors=filter_processors).count()
 
 
 # Function to insert or update a book record
-def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url: str, rss_url: str = None,
+def upsert_book(book_id: str, name: str, alt_name: str, processor: str, active: bool, info_url: str,
+                rss_url: str = None,
                 extra_url: str = None, start_chapter_id: str = None, skip: str = None, rating: int = 200,
                 tags: str = None, style: str = 'P', logger: TaskWrapper = None, db_session: Session = db.session):
     """
     Update/Insert a book
-    :param db_session:
     :param book_id:
     :param name:
+    :param alt_name:
+    :param db_session:
     :param processor:
     :param active:
     :param info_url:
@@ -385,6 +419,9 @@ def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url:
         # Inspect the values and update if necessary
         if book.name != name:
             book.name = name
+            updated = True
+        if book.alt_name != alt_name:
+            book.alt_name = alt_name
             updated = True
         if book.processor != processor:
             book.processor = processor
@@ -434,6 +471,7 @@ def upsert_book(book_id: str, name: str, processor: str, active: bool, info_url:
         new_book = Book(
             id=book_id,
             name=name,
+            alt_name=alt_name,
             processor=processor,
             active=active,
             info_url=info_url,
@@ -705,3 +743,95 @@ def sync_book_tags(book: "Book", tag_names: list[str], session, auto_commit=Fals
 
     # Return final list of tag names (uppercased)
     return [t.name for t in book.tags_rel]
+
+
+# Book KeyValue
+def find_book_key_values(book_id: str) -> Optional[List[BookKeyValue]]:
+    """
+    Find all key/value rows stored for a book.
+    :param book_id:
+    :return:
+    """
+    return BookKeyValue.query.filter_by(book_id=book_id).order_by(BookKeyValue.key).all()
+
+
+def find_book_key_value(book_id: str, id: int) -> Optional[BookKeyValue]:
+    """
+    Find a single key/value row for a book by its row id.
+    :param book_id:
+    :param id:
+    :return:
+    """
+    return BookKeyValue.query.filter_by(book_id=book_id, id=id).first()
+
+
+def add_book_key_value(session: Session, book_id: str, key: str, value: Optional[str], purpose: int) -> Optional[BookKeyValue]:
+    """
+    Add a key/value row for a book.
+    :param session:
+    :param book_id:
+    :param key:
+    :param value:
+    :param purpose:
+    :return: The new row, or None when a unique row already exists for the book/key/purpose.
+    """
+    row = BookKeyValue(
+        book_id=book_id,
+        key=key,
+        value=value,
+        purpose=purpose
+    )
+
+    try:
+        session.add(row)
+        session.commit()
+        return row
+    except IntegrityError:
+        session.rollback()
+        return None
+
+
+def update_book_key_value(session: Session, book_id: str, row_id: int, value: Optional[str],
+                          purpose: Optional[int]) -> Optional[BookKeyValue]:
+    """
+    Update an existing key/value row for a book.
+    The key is locked once created and cannot be modified.
+    :param session:
+    :param book_id:
+    :param row_id:
+    :param value:
+    :param purpose:
+    :return:
+    """
+    row = BookKeyValue.query.filter_by(book_id=book_id, id=row_id).first()
+    if row is None:
+        return None
+
+    row.value = value
+    if purpose is not None:
+        row.purpose = purpose
+
+    try:
+        session.commit()
+    except IntegrityError as e:
+        logging.exception(e)
+        session.rollback()
+        return None
+
+    return row
+
+
+def remove_book_key_value(session: Session, book_id: str, row_id: int) -> bool:
+    """
+    Remove a key/value row for a book.
+    :param session:
+    :param book_id:
+    :param row_id:
+    :return:
+    """
+    row = BookKeyValue.query.filter_by(book_id=book_id, id=row_id).first()
+    if row is not None:
+        session.delete(row)
+        session.commit()
+        return True
+    return False

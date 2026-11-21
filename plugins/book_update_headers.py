@@ -13,6 +13,15 @@ class UpdateHeaders(ActionBookGeneralPlugin):
     """
     We use headers from Chrome to access protected webpages.  This updates the local header definition file.
     """
+    AI_QUICK_DESCRIPTION = ('Saves a cURL-based header definition to headers.json so the server '
+                            'can access anti-bot-protected source sites.')
+    AI_LONG_DESCRIPTION = (
+        'Updates the server-wide header definition file (headers.json) used when downloading '
+        'from sites behind anti-bot protection. The single required argument, Headers, must be a '
+        'cURL (Bash) command string copied from a browser\'s developer tools; it is parsed into '
+        'its constituent header values and written to the JSON file. No books, chapters, or '
+        'images are read or changed. This is a server-wide setting, not scoped to any single '
+        'book.')
 
     def __init__(self):
         super().__init__()

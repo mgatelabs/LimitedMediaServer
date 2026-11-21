@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import object_session, relationship
 from werkzeug.security import generate_password_hash
 
+from constants import BOOK_KEY_PURPOSE_ALT_VALUE, MEDIA_FOLDER_KEY_PURPOSE_DEFAULT
 from feature_flags import MANAGE_APP, MANAGE_PROCESSES, UTILITY_PLUGINS, GENERAL_PLUGINS, VIEW_PROCESSES
 from filename_utils import decompress_filenames, compress_filenames
 
@@ -31,6 +32,15 @@ def ensure_schema(engine):
         """
         ALTER TABLE mediafolders
         ADD COLUMN folder_tag_mask NUMERIC(38, 0) NOT NULL DEFAULT 0
+        """
+    )
+    ensure_column(
+        engine,
+        "books",
+        "alt_name",
+        """
+        ALTER TABLE books
+        ADD COLUMN alt_name VARCHAR(256) NULL
         """
     )
 
@@ -119,6 +129,7 @@ class Book(db.Model):
 
     id = db.Column(db.String(128), primary_key=True, nullable=False)  # Unique ID, string, not null
     name = db.Column(db.String(256), nullable=False)  # Name of the book, string, not null
+    alt_name = db.Column(db.String(256), nullable=True)  # Alternative name of the book, string, not null
     rating = db.Column(db.Integer, nullable=False, default=200)  # Rating, required, default 200
 
     info_url = db.Column(db.String(1024), nullable=False)  # Info URL, required
@@ -142,6 +153,9 @@ class Book(db.Model):
     # Establish relationship with Chapter
     chapters = db.relationship("Chapter", back_populates="book", cascade="all, delete-orphan", lazy=True)
     tags_rel = db.relationship("Tag", secondary=book_tags, back_populates="books", lazy="dynamic")
+
+    def get_keys_for_purpose(self, purpose):
+        return {kv.key: kv.value for kv in self.key_values if kv.purpose == purpose}
 
 
 class Tag(db.Model):
@@ -192,6 +206,26 @@ class Chapter(db.Model):
         self.page_count = len(image_list)
 
         return True
+
+
+# Book key/value pair model
+class BookKeyValue(db.Model):
+    __tablename__ = 'book_key_values'
+
+    # Enforce a single row per book+key+purpose
+    __table_args__ = (
+        db.UniqueConstraint('book_id', 'key', 'purpose', name='book_key_value_uc'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)  # Auto-generated ID, unique identifier for each value
+    book_id = db.Column(db.String(128), db.ForeignKey('books.id', ondelete='CASCADE'),
+                        nullable=False)  # Foreign key to Book table
+    key = db.Column(db.String(256), nullable=False)  # Key, required
+    value = db.Column(db.Text, nullable=True)  # Value, optional
+    purpose = db.Column(db.Integer, nullable=False, default=BOOK_KEY_PURPOSE_ALT_VALUE)  # 1 = Book Alt Value
+
+    # Relationships
+    book = db.relationship('Book', backref=db.backref('key_values', cascade='all, delete-orphan'))
 
 
 class VolumeBookmark(db.Model):
@@ -298,6 +332,9 @@ class MediaFolder(db.Model):
             return False
         return bool(self.folder_tag_mask & (1 << bit))
 
+    def get_keys_for_purpose(self, purpose):
+        return {kv.key: kv.value for kv in self.key_values if kv.purpose == purpose}
+
 
 class MediaFolderTag(db.Model):
     __tablename__ = 'mediafolder_tags'
@@ -313,6 +350,26 @@ class MediaFolderTag(db.Model):
     __table_args__ = (
         db.CheckConstraint('bit >= 0 AND bit < 128', name='ck_mediafoldertag_bit_range'),
     )
+
+
+# Media Folder key/value pair model
+class MediaFolderKeyValue(db.Model):
+    __tablename__ = 'mediafolder_key_values'
+
+    # Enforce a single row per folder+key+purpose
+    __table_args__ = (
+        db.UniqueConstraint('folder_id', 'key', 'purpose', name='mediafolder_key_value_uc'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)  # Auto-generated ID, unique identifier for each value
+    folder_id = db.Column(db.String(36), db.ForeignKey('mediafolders.id', ondelete='CASCADE'),
+                          nullable=False)  # Foreign key to MediaFolder table
+    key = db.Column(db.String(256), nullable=False)  # Key, required
+    value = db.Column(db.Text, nullable=True)  # Value, optional
+    purpose = db.Column(db.Integer, nullable=False, default=MEDIA_FOLDER_KEY_PURPOSE_DEFAULT)  # 1 = Generic Media Folder Value
+
+    # Relationships
+    mediafolder = db.relationship('MediaFolder', backref=db.backref('key_values', cascade='all, delete-orphan'))
 
 
 @event.listens_for(MediaFolder, 'before_delete')

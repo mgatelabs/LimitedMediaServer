@@ -20,6 +20,18 @@ class MediaInfoForFilePlugin(ActionMediaFilePlugin):
     """
     Subtitle a file using FFMPEG
     """
+    AI_QUICK_DESCRIPTION = ('Runs ffprobe on one video file and logs the full media details '
+                            '(format, duration, streams, codecs, etc.).')
+    AI_LONG_DESCRIPTION = (
+        'A read-only ffprobe inspection of a single video file (only MIME types starting with '
+        '"video/" are accepted - anything else fails with an error). It locates the file by id '
+        'and runs ffprobe over its data, writing a rendered Markdown report to the task log with '
+        'the container format, duration, overall bit rate, and a per-stream breakdown (codec and '
+        'type for each stream, plus width/height/FPS for video streams and channels/sample rate '
+        'for audio streams). Nothing is modified on disk or in the database. No plugin-specific '
+        'arguments beyond the file itself. Requires the ffprobe executable on PATH. It is similar '
+        'to the "File Details" action but only reports the media/stream info - the basic '
+        'filename/MIME/size/archive/creation properties are not included.')
 
     def __init__(self):
         super().__init__()

@@ -97,6 +97,16 @@ class CheckDiskStatusPlugin(ActionPlugin):
     """
     This is a way to check how much disk space is left on this server.
     """
+    AI_QUICK_DESCRIPTION = ('Read-only disk-space report: OS-level partition usage plus total '
+                            'size of the primary, archive, and book storage folders and their '
+                            'largest subfolders.')
+    AI_LONG_DESCRIPTION = (
+        'Logs a read-only disk report. First, per-partition usage (device, mount point, file '
+        'system, total/used/free space, percent used) for every mounted partition. Then '
+        'storage-specific figures: the total size of the primary media folder, the archive '
+        'media folder, and the book storage folder, plus the largest first-level subfolders of '
+        'the book storage folder (including their preview-image sizes). No files are created, '
+        'modified, or deleted. Takes no arguments.')
 
     def __init__(self):
         super().__init__()

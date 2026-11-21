@@ -247,14 +247,17 @@ def get_user_features(user_details) -> int:
 
 def get_user_group_id(user_details) -> Optional[int]:
     """
-    Extract the group_id value from user_details.
+    Extract the group id value from user_details.
 
     :param user_details: Dictionary containing user details.
-    :return: Integer value of features or 0 if not present.
+    :return: Integer value of the user's group id or None if the user is not in a group.
     """
     if user_details is None:
         return None
-    return user_details.get('gid', None)
+    group_id = user_details.get('gid', None)
+    if group_id is not None:
+        return group_id
+    return None
 
 
 def get_user_media_limit(user_details) -> Optional[int]:

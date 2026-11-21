@@ -18,6 +18,17 @@ class BackupPlugin(ActionPlugin):
     """
     This is a utility task which will try to awake a local networked PC
     """
+    AI_QUICK_DESCRIPTION = ('Writes a full JSON export of the entire database (users, books, '
+                            'media folders, progress, bookmarks, and settings) to a new '
+                            'timestamped backup folder.')
+    AI_LONG_DESCRIPTION = (
+        'Exports the whole database as a set of JSON files into a freshly created timestamped '
+        'folder under the configured backup path. The backup includes app properties/settings, '
+        'user groups, users, book definitions, media folders and files, media folder tags, '
+        'media progress, book progress, and book bookmarks. This is a safety snapshot meant to '
+        'pair with the restore process; it does not modify, migrate, or delete anything. Takes '
+        'no arguments. The backup path is set in the server configuration and must be a '
+        'read/write folder.')
 
     def __init__(self):
         super().__init__()

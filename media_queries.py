@@ -1,12 +1,13 @@
+import logging
 from datetime import datetime
 from typing import Optional, List, Tuple, Type
 
 from flask_sqlalchemy.session import Session
 from sqlalchemy import and_, cast, Integer
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import NoResultFound, IntegrityError
 from sqlalchemy.orm import joinedload
 
-from db import MediaFolder, MediaFile, db, MediaFileProgress, MediaFolderTag
+from db import MediaFolder, MediaFile, db, MediaFileProgress, MediaFolderTag, MediaFolderKeyValue
 from text_utils import is_not_blank
 
 
@@ -649,3 +650,96 @@ def get_all_tags(db_session: Session = db.session) -> list[Type[MediaFolderTag]]
     List all tags.
     """
     return db_session.query(MediaFolderTag).order_by(MediaFolderTag.long_tag).all()
+
+
+# Media Folder KeyValue
+def find_media_folder_key_values(folder_id: str) -> Optional[List[MediaFolderKeyValue]]:
+    """
+    Find all key/value rows stored for a media folder.
+    :param folder_id:
+    :return:
+    """
+    return MediaFolderKeyValue.query.filter_by(folder_id=folder_id).order_by(MediaFolderKeyValue.key).all()
+
+
+def find_media_folder_key_value(folder_id: str, id: int) -> Optional[MediaFolderKeyValue]:
+    """
+    Find a single key/value row for a media folder by its row id.
+    :param folder_id:
+    :param id:
+    :return:
+    """
+    return MediaFolderKeyValue.query.filter_by(folder_id=folder_id, id=id).first()
+
+
+def add_media_folder_key_value(session: Session, folder_id: str, key: str, value: Optional[str],
+                               purpose: int) -> Optional[MediaFolderKeyValue]:
+    """
+    Add a key/value row for a media folder.
+    :param session:
+    :param folder_id:
+    :param key:
+    :param value:
+    :param purpose:
+    :return: The new row, or None when a unique row already exists for the folder/key/purpose.
+    """
+    row = MediaFolderKeyValue(
+        folder_id=folder_id,
+        key=key,
+        value=value,
+        purpose=purpose
+    )
+
+    try:
+        session.add(row)
+        session.commit()
+        return row
+    except IntegrityError:
+        session.rollback()
+        return None
+
+
+def update_media_folder_key_value(session: Session, folder_id: str, row_id: int, value: Optional[str],
+                                  purpose: Optional[int]) -> Optional[MediaFolderKeyValue]:
+    """
+    Update an existing key/value row for a media folder.
+    The key is locked once created and cannot be modified.
+    :param session:
+    :param folder_id:
+    :param row_id:
+    :param value:
+    :param purpose:
+    :return:
+    """
+    row = MediaFolderKeyValue.query.filter_by(folder_id=folder_id, id=row_id).first()
+    if row is None:
+        return None
+
+    row.value = value
+    if purpose is not None:
+        row.purpose = purpose
+
+    try:
+        session.commit()
+    except IntegrityError as e:
+        logging.exception(e)
+        session.rollback()
+        return None
+
+    return row
+
+
+def remove_media_folder_key_value(session: Session, folder_id: str, row_id: int) -> bool:
+    """
+    Remove a key/value row for a media folder.
+    :param session:
+    :param folder_id:
+    :param row_id:
+    :return:
+    """
+    row = MediaFolderKeyValue.query.filter_by(folder_id=folder_id, id=row_id).first()
+    if row is not None:
+        session.delete(row)
+        session.commit()
+        return True
+    return False

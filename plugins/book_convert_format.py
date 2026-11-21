@@ -16,6 +16,14 @@ class ConvertFormatPlugin(ActionBookSpecificPlugin):
     """
     Convert the chapters from chapter-X to 000X
     """
+    AI_QUICK_DESCRIPTION = ('Re-encodes every chapter image of one book into the server-wide '
+                            'book storage format (image re-encode, files are replaced).')
+    AI_LONG_DESCRIPTION = (
+        'Converts all images in all chapters of a single book to the configured book storage '
+        'format. Each image is rewritten in place in its chapter folder, so the action is '
+        'destructive to the original image data. Book ID is required. After conversion the '
+        'book stats cache is refreshed. Use this when a book was imported with images that do '
+        'not match the configured storage format.')
 
     def __init__(self):
         super().__init__()

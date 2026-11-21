@@ -1,14 +1,17 @@
 import argparse
+import base64
+import json
 import os.path
 import platform
 import shlex
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import date as date_type, datetime
 from time import sleep
 
 from flask_sqlalchemy.session import Session
 
+from batch_curl import download_image_batch
 from curl_utils import custom_curl_get, read_temp_file, read_header_file, is_cloudflare_block
 from feature_flags import MANAGE_MEDIA
 from file_utils import is_valid_url, temporary_folder
@@ -23,12 +26,71 @@ from plugins.media_download_file import DownloadFileJob
 from strip_png_prefix import strip_png_prefix_from_directory
 from text_utils import is_blank
 from thread_utils import TaskWrapper
+from utility import random_sleep
+
+
+def _cloudflare_retry_curl(url: str, headers, dest_file: str,
+                            task_wrapper: TaskWrapper, label: str = 'file') -> bool:
+    _MAX_CF_RETRIES = 0
+    for attempt in range(_MAX_CF_RETRIES + 1):
+        if not custom_curl_get(url, headers, dest_file, task_wrapper):
+            task_wrapper.set_warning(True)
+            return False
+        if not is_cloudflare_block(dest_file):
+            task_wrapper.set_warning(False)
+            return True
+        if attempt == _MAX_CF_RETRIES:
+            break
+        task_wrapper.set_warning(True)
+        delay = 360
+        jitter = 35
+        task_wrapper.warn(
+            f'Cloudflare block on {label} (attempt {attempt + 1}/{_MAX_CF_RETRIES}) '
+            f'— waiting ~{delay}s before retry'
+        )
+        task_wrapper.warn(f'Cloudflare blocked URL: {url}')
+        random_sleep(delay + jitter, delay - jitter, task_wrapper)
+
+    task_wrapper.error(f'Cloudflare block persisted after {_MAX_CF_RETRIES} retries on {label}')
+    return False
+
+
+def _log_tracker_payload(task_wrapper: TaskWrapper, folder_id: str, filename: str,
+                          url: str, origin: str) -> None:
+    stem = filename.rsplit('.', 1)[0] if '.' in filename else filename
+    group = {
+        "n": stem,
+        "t": "m3u8_vtt",
+        "folder_id": folder_id,
+        "items": [
+            {"t": "STREAM", "url": url, "origin": origin}
+        ]
+    }
+    payload = base64.b64encode(json.dumps([group]).encode('utf-8')).decode('utf-8')
+    task_wrapper.warn(f'Tracker payload to re-submit: {payload}')
 
 
 class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
+    AI_QUICK_DESCRIPTION = ('Advanced HLS (M3U8) downloader that fetches the playlist and all its '
+                            'segments with resilient curl-based downloading (retries, HTTP/2, '
+                            'Cloudflare handling) and assembles them into an MP4 without re-encoding.')
+    AI_LONG_DESCRIPTION = (
+        'A more robust version of the M3U8 downloader for protected or unreliable streams. '
+        'Instead of handing the .m3u8 URL directly to ffmpeg, it first downloads the playlist '
+        'itself, then downloads every video segment via a custom, batched curl downloader with '
+        'automatic retries (up to 7 rounds), optional HTTP/2, and Cloudflare anti-bot detection '
+        'and retry. It also resolves AES-128 encrypted streams by fetching the decryption key '
+        'files and the initialization map, and it substitutes stand-in segments for a small '
+        'number of missing ones (except for encrypted streams, where a wrong segment would '
+        'corrupt the output). The segments are then stitched into an MP4 container with ffmpeg '
+        'in stream-copy mode (no re-encode). If fewer than ~97% of segments can be retrieved '
+        'the download is aborted. The result is registered as video/mp4 and moved into the '
+        'chosen disk (Primary or Archive). Linux-only (requires the curl toolchain). Required '
+        'arguments: URL (the .m3u8 manifest), Origin (the referring page), and Filename. '
+        'HTTP2 and Location are optional.')
 
     def __init__(self):
         super().__init__()
@@ -73,6 +135,12 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
             plugin_url_arg('Origin', 'origin', 'The origin for the Url.', '', 'no', "Origin")
         )
 
+        result.append(
+            plugin_select_arg('HTTP2', 'http2', '0',
+                              plugin_select_values('Yes', '1', 'No', '0'), '', 'media',
+                              adv='Y')
+        )
+
         return result
 
     def process_action_args(self, args):
@@ -98,6 +166,11 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
         elif not (args['dest'] == 'primary' or args['dest'] == 'archive'):
             results.append('Invalid dest value')
 
+        if 'http2' not in args or is_blank(args['http2']):
+            results.append('http2 is required')
+        elif not (args['http2'] == '0' or args['http2'] == '1'):
+            results.append('Invalid http2 value')
+
         if len(results) > 0:
             return results
         return None
@@ -111,15 +184,26 @@ class DownloadM3u8PluginEx(ActionMediaFolderPlugin):
     def create_task(self, db_session: Session, args):
         filename = args['filename']
         return DownloadM3u8JobEx("Download M3u8", f'Downloading {filename} from M3u8 to folder ' + args['folder_id'],
-                                 args['folder_id'], filename, args['url'].strip(), args['origin'].strip(),
-                                 args['dest'], self.primary_path,
-                                 self.archive_path, self.temp_path)
+                                 args['folder_id'], filename, args['url'].strip(), args['origin'].strip(), args['dest'],
+                                 self.primary_path, self.archive_path, self.temp_path, args['http2'] == '1')
 
 
 class DownloadM3u8SubtitlePluginEx(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
+    AI_QUICK_DESCRIPTION = ('Same advanced M3U8 downloader as the (Ex) variant, optionally also '
+                            'fetching a companion .vtt subtitle file into the same folder.')
+    AI_LONG_DESCRIPTION = (
+        'Downloads an HLS video stream using the same advanced method as the M3u8 (Ex) plugin '
+        '- batched curl segment downloads with retries, HTTP/2, and Cloudflare handling, then '
+        'stitched into an MP4 by ffmpeg in stream-copy mode. In addition, it can retrieve a '
+        'separate subtitle file from its own URL and save it to the same media folder as '
+        '<filename>.vtt, so the video and its WebVTT subtitles land together. The video and '
+        'subtitle parts are independent: if only one of the URL/origin pairs is valid, only '
+        'that part is downloaded. As with the (Ex) variant this is Linux-only. Required '
+        'arguments: Filename, M3u8 URL, and M3u8 Origin. Optionally supply Subtitle URL and '
+        'Subtitle Origin to also grab the .vtt file. HTTP2 and Location are optional.')
 
     def __init__(self):
         super().__init__()
@@ -172,6 +256,11 @@ class DownloadM3u8SubtitlePluginEx(ActionMediaFolderPlugin):
             plugin_url_arg('M3u8 Origin', 'origin', 'The origin for the Url.', '', 'no', "Origin")
         )
 
+        result.append(
+            plugin_select_arg('HTTP2', 'http2', '0',
+                              plugin_select_values('Yes', '1', 'No', '0'), '', 'media',
+                              adv='Y')
+        )
 
         return result
 
@@ -215,6 +304,11 @@ class DownloadM3u8SubtitlePluginEx(ActionMediaFolderPlugin):
         elif not (args['dest'] == 'primary' or args['dest'] == 'archive'):
             results.append('Invalid dest value')
 
+        if 'http2' not in args or is_blank(args['http2']):
+            results.append('http2 is required')
+        elif not (args['http2'] == '0' or args['http2'] == '1'):
+            results.append('Invalid http2 value')
+
         if len(results) > 0:
             return results
         return None
@@ -234,10 +328,7 @@ class DownloadM3u8SubtitlePluginEx(ActionMediaFolderPlugin):
             jobs.append(
                 DownloadM3u8JobEx("Download M3u8", f'Downloading {filename} from M3u8 to folder ' + args['folder_id'],
                                   args['folder_id'], filename, args['url'].strip(), args['origin'].strip(),
-                                  args['dest'],
-                                  self.primary_path,
-                                  self.archive_path,
-                                  self.temp_path))
+                                  args['dest'], self.primary_path, self.archive_path, self.temp_path, args['http2'] == '1'))
 
         if is_valid_url(args['sub_url']) and is_valid_url(args['sub_origin']):
             jobs.append(
@@ -251,6 +342,144 @@ class DownloadM3u8SubtitlePluginEx(ActionMediaFolderPlugin):
         return jobs
 
 
+def _validate_downloaded_segments(entries, temp_folder: str, encrypted: bool,
+                                   task_wrapper: TaskWrapper, total_segments: int,
+                                   confirmed_count_ref: list, rejected_count_ref: list) -> None:
+    for entry in entries:
+        seg_file = os.path.join(temp_folder, entry.local_name)
+
+        if not os.path.exists(seg_file):
+            entry.valid = False
+            entry.missing = True
+            continue
+
+        file_size = os.path.getsize(seg_file)
+        if file_size < 50 * 1024:
+            try:
+                with open(seg_file, 'r', encoding='utf-8') as fh:
+                    fh.read(4096)
+                os.remove(seg_file)
+                entry.valid = False
+                entry.missing = True
+                rejected_count_ref[0] += 1
+                continue
+            except (UnicodeDecodeError, OSError):
+                pass
+
+        if encrypted:
+            entry.determined_extension = 'ts'
+            entry.valid = True
+            entry.missing = False
+        else:
+            available_format = get_file_formats(seg_file, task_wrapper)
+            if available_format is None:
+                valid_format = False
+                determined_ext = 'mp4'
+            elif available_format == 'mp4':
+                valid_format = True
+                determined_ext = 'mp4'
+            else:
+                valid_format = True
+                determined_ext = available_format
+
+            if determined_ext == 'png_pipe':
+                determined_ext = 'ts'
+
+            idx = int(entry.local_name.split('_')[1].split('.')[0])
+            new_seg_path = os.path.join(temp_folder, f'seg_{idx}.{determined_ext}')
+            shutil.move(seg_file, new_seg_path)
+
+            entry.determined_extension = determined_ext
+            entry.valid = valid_format
+            entry.missing = False
+
+        if entry.valid:
+            confirmed_count_ref[0] += 1
+            task_wrapper.update_progress(100.0 * (confirmed_count_ref[0] / total_segments))
+
+
+def _batch_download_segments(segments: list, temp_folder: str, headers,
+                              encrypted: bool, task_wrapper: TaskWrapper,
+                              use_http2: bool = True) -> bool:
+    _MAX_RETRIES = 7
+    _RETRY_WAIT = 15
+    _MIN_BATCH_SUCCESS_RATE = 0.25
+    _COMPLETION_RATE = 0.97
+    total = len(segments)
+
+    batch = [{'file': entry.local_name, 'url': entry.uri} for entry in segments]
+
+    # Use the file count as progress
+    task_wrapper.expected_files_count = total
+    task_wrapper.expected_files_as_progress = True
+
+    task_wrapper.info(f'Batch downloading {total} segments (HTTP/2={use_http2})')
+    download_image_batch(batch, temp_folder, headers=headers, parallel_max=4 if use_http2 else 1, use_http2=use_http2)
+
+
+
+    confirmed_count_ref = [0]
+    rejected_count_ref = [0]
+    _validate_downloaded_segments(segments, temp_folder, encrypted, task_wrapper, total, confirmed_count_ref, rejected_count_ref)
+    if rejected_count_ref[0] > 0:
+        task_wrapper.warn(f'{rejected_count_ref[0]}/{total} segments rejected as HTML/error responses on first attempt')
+
+    succeeded_initial = sum(1 for e in segments if not e.missing)
+    if succeeded_initial < max(1, int(total * _MIN_BATCH_SUCCESS_RATE)):
+        task_wrapper.error(
+            f'Only {succeeded_initial}/{total} segments downloaded on first attempt '
+            f'(< {int(_MIN_BATCH_SUCCESS_RATE * 100)}%) — aborting, playlist is likely invalid'
+        )
+        task_wrapper.expected_files_as_progress = False
+        return False
+
+    for retry_num in range(1, _MAX_RETRIES + 1):
+        missing = [e for e in segments if e.missing]
+        if not missing:
+            break
+
+        succeeded_so_far = sum(1 for e in segments if not e.missing)
+        if succeeded_so_far >= int(total * _COMPLETION_RATE):
+            task_wrapper.info(f'{succeeded_so_far}/{total} segments present (>= {int(_COMPLETION_RATE * 100)}%) — skipping further retries')
+            break
+
+        task_wrapper.info(f'Retry {retry_num}/{_MAX_RETRIES}: {len(missing)} missing segments')
+        random_sleep(_RETRY_WAIT, _RETRY_WAIT - 2, task_wrapper)
+
+        batch = [{'file': entry.local_name, 'url': entry.uri} for entry in missing]
+        download_image_batch(batch, temp_folder, headers=headers, parallel_max=16 if use_http2 else 1, use_http2=use_http2)
+
+        prev_missing_count = len(missing)
+        retry_rejected_ref = [0]
+        _validate_downloaded_segments(missing, temp_folder, encrypted, task_wrapper, total, confirmed_count_ref, retry_rejected_ref)
+        if retry_rejected_ref[0] > 0:
+            task_wrapper.warn(f'Retry {retry_num}: {retry_rejected_ref[0]}/{prev_missing_count} segments rejected as HTML/error responses')
+        rejected_count_ref[0] += retry_rejected_ref[0]
+
+        recovered = sum(1 for e in missing if not e.missing)
+        if recovered < max(1, int(prev_missing_count * _MIN_BATCH_SUCCESS_RATE)):
+            task_wrapper.error(
+                f'Retry {retry_num}: only {recovered}/{prev_missing_count} segments recovered '
+                f'(< {int(_MIN_BATCH_SUCCESS_RATE * 100)}%) — aborting'
+            )
+            task_wrapper.expected_files_as_progress = False
+            return False
+
+    task_wrapper.expected_files_as_progress = False
+
+    succeeded = sum(1 for e in segments if not e.missing)
+    if rejected_count_ref[0] > 0:
+        task_wrapper.warn(f'{rejected_count_ref[0]} total segments were HTML/error responses across all attempts')
+    if succeeded < int(total * _COMPLETION_RATE):
+        task_wrapper.error(
+            f'Only {succeeded}/{total} segments downloaded after all retries '
+            f'(< {int(_COMPLETION_RATE * 100)}%) — download failed'
+        )
+        return False
+
+    return True
+
+
 def file_to_hex_string(filepath):
     with open(filepath, "rb") as f:
         data = f.read()
@@ -259,18 +488,25 @@ def file_to_hex_string(filepath):
 
 
 class DownloadM3u8JobEx(TaskWrapper):
-    def __init__(self, name, description, folder_id, filename, url, origin, dest, primary_path, archive_path,
-                 temp_path):
+    def __init__(self, name, description, folder_id, filename, url, origin, dest, primary_path, archive_path, temp_path,
+                 useHttp2=False):
         super().__init__(name, description)
         self.folder_id = folder_id
         self.filename = filename
-        self.url = url
-        self.origin = origin
+        url_list = [u.strip() for u in (url or '').split(';') if u.strip()]
+        origin_list = [o.strip() for o in (origin or '').split(';')] if origin else []
+        while len(origin_list) < len(url_list):
+            origin_list.append('')
+        self.url = ';'.join(url_list)
+        self.origin = ';'.join(origin_list)
         self.dest = dest
         self.primary_path = primary_path
         self.archive_path = archive_path
         self.temp_path = temp_path
         self.ref_folder_id = folder_id
+        self.useHttp2 = useHttp2
+        if useHttp2:
+            self.weight = 90
 
     def run(self, db_session: Session):
 
@@ -283,6 +519,7 @@ class DownloadM3u8JobEx(TaskWrapper):
             self.set_failure()
             return
 
+        self.ref_folder_name = source_row.name if hasattr(source_row, 'name') else str(source_row.id)
         self.ref_folder_preview = source_row.preview == True
 
         is_archive = self.dest == 'archive'
@@ -295,21 +532,50 @@ class DownloadM3u8JobEx(TaskWrapper):
             made_m3u8_file = os.path.join(temp_folder, 'remade.m3u8')
             temp_file = os.path.join(temp_folder, 'download.mp4')
 
-            headers = get_headers(self.url, True, self, False, self.origin)
+            url_list = [u.strip() for u in self.url.split(';') if u.strip()]
+            origin_list = [o.strip() for o in self.origin.split(';')] if self.origin else []
+            while len(origin_list) < len(url_list):
+                origin_list.append('')
 
-            if headers is None:
-                self.error('Unable to get Headers, stopping')
-                return False
+            if not url_list:
+                self.error('Could not download m3u8')
+                self.set_failure()
+                return
 
-            if not custom_curl_get(self.url, headers, temp_m3u8_file, self):
+            playlist_ready = False
+            for index, (stream_url, stream_origin) in enumerate(zip(url_list, origin_list)):
+                if stream_origin and not is_valid_url(stream_origin):
+                    stream_origin = stream_url
+
+                if index > 0:
+                    self.warn(f'File failed to download, trying alternative source: {index + 1}/{len(url_list)}')
+                    random_sleep(12, 12, self)
+
+                headers = get_headers(stream_url, True, self, False, stream_origin)
+
+                if headers is None:
+                    self.error('Unable to get Headers, stopping')
+                    continue
+
+                if not _cloudflare_retry_curl(stream_url, headers, temp_m3u8_file, self, 'm3u8 playlist') \
+                        or not os.path.exists(temp_m3u8_file) or os.path.getsize(temp_m3u8_file) <= 0:
+                    if os.path.exists(temp_m3u8_file):
+                        try:
+                            os.remove(temp_m3u8_file)
+                        except OSError:
+                            pass
+                    continue
+
+                self.url = stream_url
+                self.origin = stream_origin
+                playlist_ready = True
+                break
+
+            if not playlist_ready:
                 self.error("Failed to download m3u8.")
+                _log_tracker_payload(self, self.folder_id, self.filename, ';'.join(url_list), ';'.join(origin_list))
                 self.set_failure()
-                return None
-
-            if is_cloudflare_block(temp_m3u8_file):
-                self.error('Cloudflare block detected on m3u8 response (403 equivalent)')
-                self.set_failure()
-                return None
+                return
 
             response_text = read_temp_file(temp_m3u8_file)
             base_url = self.url.rsplit("/", 1)[0] + "/"
@@ -324,8 +590,9 @@ class DownloadM3u8JobEx(TaskWrapper):
                 self.info(f'Found Key Definition: {entry.method}')
                 self.debug(entry.raw_line)
                 key_path = os.path.join(temp_folder, entry.local_name)
-                if not custom_curl_get(entry.uri, headers, key_path, self):
+                if not _cloudflare_retry_curl(entry.uri, headers, key_path, self, 'encryption key'):
                     self.error("Failed to download encryption key.")
+                    _log_tracker_payload(self, self.folder_id, self.filename, self.url, self.origin)
                     self.set_failure()
                     return None
                 self.debug(f"Decryption key fetched from: {entry.uri}")
@@ -335,8 +602,9 @@ class DownloadM3u8JobEx(TaskWrapper):
                 self.info('Found Map Definition')
                 self.debug(entry.raw_line)
                 map_path = os.path.join(temp_folder, entry.local_name)
-                if not custom_curl_get(entry.uri, headers, map_path, self):
+                if not _cloudflare_retry_curl(entry.uri, headers, map_path, self, 'map file'):
                     self.error("Failed to download map file.")
+                    _log_tracker_payload(self, self.folder_id, self.filename, self.url, self.origin)
                     self.set_failure()
                     return None
                 self.debug(f"Map file fetched from: {entry.uri}")
@@ -344,75 +612,12 @@ class DownloadM3u8JobEx(TaskWrapper):
             encrypted = playlist.has_encryption()
             segments = playlist.segments()
             total = len(segments)
-            consecutive_404s = 0
-            consecutive_404_limit = max(1, int(total * 0.10))
 
             # --- Phase 3: download segments ---
-            for idx, entry in enumerate(segments):
-
-                if self.is_cancelled:
-                    return
-
-                self.update_progress(((idx + 1) / total) * 100.0)
-                self.debug(f"Downloading segment: {entry.uri}")
-
-                seg_file = os.path.join(temp_folder, entry.local_name)
-                header_file = os.path.join(temp_folder, f'seg_{idx}.txt')
-
-                if not custom_curl_get(entry.uri, headers, seg_file, self, header_file=header_file):
-                    self.warn(f"Failed to download segment {entry.local_name}.")
-                    self.set_warning()
-                    entry.valid = False
-                    entry.missing = True
-                    consecutive_404s += 1
-                else:
-                    current_headers = read_header_file(header_file)
-                    http_status = current_headers['@HTTP_STATUS']
-
-                    if http_status == '404':
-                        self.debug(f'{entry.local_name} returned 404, will attempt stand-in after download loop')
-                        entry.valid = False
-                        entry.missing = True
-                        consecutive_404s += 1
-                    else:
-                        consecutive_404s = 0
-
-                        if http_status != '200':
-                            self.debug(f'http-status: {http_status}')
-
-                        if 'content-type' in current_headers:
-                            self.debug(f'{entry.local_name} content-type: {current_headers.get("content-type")}')
-
-                        if encrypted:
-                            determined_ext = 'ts'
-                            valid_format = True
-                        else:
-                            available_format = get_file_formats(seg_file, self)
-                            if available_format is None:
-                                valid_format = False
-                                determined_ext = 'mp4'
-                            elif available_format == 'mp4':
-                                self.trace(f'Segment {entry.local_name} is MP4')
-                                valid_format = True
-                                determined_ext = 'mp4'
-                            else:
-                                valid_format = True
-                                determined_ext = available_format
-
-                        if determined_ext == 'png_pipe':
-                            determined_ext = 'ts'
-
-                        new_seg_path = os.path.join(temp_folder, f'seg_{idx}.{determined_ext}')
-                        shutil.move(seg_file, new_seg_path)
-                        self.trace(f'Segment {entry.local_name} is actually {determined_ext}')
-
-                        entry.determined_extension = determined_ext
-                        entry.valid = valid_format
-
-                if consecutive_404s >= consecutive_404_limit:
-                    self.error(f'{consecutive_404s} consecutive 404s (limit is {consecutive_404_limit} for {total} segments) — aborting download, playlist is likely invalid')
-                    self.set_failure()
-                    return
+            self.info(f'Downloading {total} segments')
+            if not _batch_download_segments(segments, temp_folder, headers, encrypted, self, self.useHttp2):
+                self.set_failure()
+                return None
 
             # --- Phase 3b: resolve missing segments ---
             missing_segments = [e for e in segments if e.missing]
@@ -487,6 +692,9 @@ class DownloadM3u8JobEx(TaskWrapper):
 
                     dest_path = get_data_for_mediafile(new_file, self.primary_path, self.archive_path)
                     shutil.move(str(temp_file), str(dest_path))
+
+                    source_row.last_date = date_type.today()
+                    db_session.commit()
 
                     self.set_worked()
                     self.set_finished()

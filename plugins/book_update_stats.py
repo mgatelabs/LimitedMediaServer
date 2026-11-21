@@ -20,6 +20,16 @@ class UpdateAllCaches(ActionBookGeneralPlugin):
     """
     This is a generic way to cause every book to update its living DB definition.
     """
+    AI_QUICK_DESCRIPTION = ('Rebuilds the database definition (chapters, files, previews, stats) '
+                            'of every book from the files on disk.')
+    AI_LONG_DESCRIPTION = (
+        'Scans the book storage folder on disk and regenerates every book\'s living database '
+        'definition: chapter list in reading order, per-chapter file lists (renumbered when '
+        'needed for compression), chapter preview thumbnails, cover, last chapter, and last '
+        'updated date, then reconciles all of it into the database. Clean Previews (default No), '
+        'when Yes, deletes and re-creates every chapter preview image. Update Tags (default No), '
+        'when Yes, re-syncs the book tag tables. No books are downloaded, deleted, or renamed '
+        'beyond the automatic chapter-file renumbering. Nothing is downloaded from the Internet.')
 
     def __init__(self):
         super().__init__()
@@ -74,6 +84,17 @@ class UpdateSingleCache(ActionBookSpecificPlugin):
     """
     This is a generic way to cause a single book to update its living DB definition.
     """
+    AI_QUICK_DESCRIPTION = ('Rebuilds the database definition (chapters, files, previews, stats) '
+                            'of one book from the files on disk.')
+    AI_LONG_DESCRIPTION = (
+        'The single-book version of "Update All Caches". Scans the one book\'s storage folder on '
+        'disk and regenerates its living database definition: chapter list in reading order, '
+        'per-chapter file lists (renumbered when needed for compression), chapter preview '
+        'thumbnails, cover, last chapter, and last updated date, then reconciles all of it into '
+        'the database. Clean Previews (default No), when Yes, deletes and re-creates every '
+        'chapter preview image. Unlike the all-books variant, this action does not re-sync the '
+        'book tag tables. Nothing is downloaded, deleted, or renamed beyond the automatic '
+        'chapter-file renumbering. Nothing is fetched from the Internet.')
 
     def __init__(self):
         super().__init__()

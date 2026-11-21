@@ -16,6 +16,7 @@ from ffmpeg_utils import get_ffmpeg_f_argument_from_mimetype
 from file_utils import temporary_folder
 from media_queries import insert_file
 from media_utils import get_data_for_mediafile, get_file_by_user, describe_file_size_change
+from plugin_methods import plugin_string_arg, plugin_select_arg, plugin_select_values
 from plugin_system import ActionMediaFilePlugin, ActionMediaFilesPlugin
 from text_utils import is_blank
 from thread_utils import TaskWrapper
@@ -143,6 +144,21 @@ class DeFreezeForFilePlugin(ActionMediaFilePlugin):
     """
     Task to update the previews for a specific file.
     """
+    AI_QUICK_DESCRIPTION = ('Removes frozen video segments and matching silent audio from one media file, '
+                            'writing a re-encoded copy registered alongside the original.')
+    AI_LONG_DESCRIPTION = (
+        'Analyzes one video file to find "dead" sections where the video is frozen (no change) '
+        'and the audio is silent at the same time, then cuts those sections out by re-encoding '
+        'the file. Freeze and silence ranges are detected with ffmpeg (freezedetect and '
+        'silencedetect) and only overlapping regions - where both streams are dead at once - '
+        'are removed. The result is re-encoded (H.264 CRF 28, AAC 128k, faststart) and saved '
+        'as a NEW file named <original>_defr in the same folder; the original untouched file '
+        'remains. If no dead sections are found the file is simply copied/re-registered '
+        'instead. If a media encoder service is configured the job is submitted there '
+        'remotely; otherwise it runs locally via ffmpeg. Optional tuning arguments: Freeze '
+        'dB (default -60dB), Silence Noise (default -30dB), Min Duration (default 1.5 '
+        'seconds, minimum overlap length to cut), and Force Encode (default No). Requires a '
+        'single File ID.')
 
     def __init__(self):
         super().__init__()
@@ -185,22 +201,37 @@ class DeFreezeForFilePlugin(ActionMediaFilePlugin):
         return 'kitchen'
 
     def get_action_args(self):
-        """
-        Get the arguments for the action.
-        """
         result = super().get_action_args()
-
+        result.append(plugin_string_arg('Freeze dB', 'freeze_db', 'Video freeze detection noise floor (default: -60dB)'))
+        result.append(plugin_string_arg('Silence Noise', 'silence_noise', 'Audio silence detection threshold (default: -30dB)'))
+        result.append(plugin_string_arg('Min Duration', 'min_duration', 'Minimum overlap seconds to cut (default: 1.5)'))
+        result.append(plugin_select_arg('Force Encode', 'force_encode', 'f',
+                                        plugin_select_values('No', 'f', 'Yes', 't'),
+                                        'Re-encode even if no gaps are found'))
         return result
 
     def process_action_args(self, args):
-        """
-        Process the action arguments.
-        """
         results = []
+
+        if 'freeze_db' not in args or is_blank(args['freeze_db']):
+            args['freeze_db'] = '-60dB'
+
+        if 'silence_noise' not in args or is_blank(args['silence_noise']):
+            args['silence_noise'] = '-30dB'
+
+        if 'min_duration' not in args or is_blank(args['min_duration']):
+            args['min_duration'] = '1.5'
+        else:
+            try:
+                float(args['min_duration'])
+            except ValueError:
+                results.append('min_duration must be a number')
+
+        if 'force_encode' not in args or is_blank(args['force_encode']):
+            args['force_encode'] = 'f'
 
         if len(results) > 0:
             return results
-
         return None
 
     def get_feature_flags(self):
@@ -215,13 +246,27 @@ class DeFreezeForFilePlugin(ActionMediaFilePlugin):
         """
         file_id = args['file_id']
         return DeFreezeJob("DeFreeze", f'DeFreeze for File: {file_id}', '', file_id, self.primary_path,
-                           self.archive_path, self.temp_path)
+                           self.archive_path, self.temp_path,
+                           freeze_db=args['freeze_db'], silence_noise=args['silence_noise'],
+                           min_duration=float(args['min_duration']), force_encode=args['force_encode'] == 't')
 
 
 class DeFreezeForFilesPlugin(ActionMediaFilesPlugin):
     """
     Task to update the previews for a specific file.
     """
+    AI_QUICK_DESCRIPTION = ('Same as the single-file defreeze, but processes a set of selected '
+                            'media files, producing a cleaned re-encode for each.')
+    AI_LONG_DESCRIPTION = (
+        'The multi-file version of De-Freeze. Takes a list of File IDs (comma-separated, '
+        'usually from selecting several files in the UI) and, for each one, removes sections '
+        'where the video is frozen and the audio is silent at the same time, re-encoding the '
+        'result (H.264 CRF 28, AAC 128k, faststart) into a NEW file named <original>_defr in '
+        'the same folder. The original untouched files remain. When a media encoder service is '
+        'configured the jobs are submitted there remotely; otherwise they run locally via '
+        'ffmpeg. Files with no dead sections are simply re-registered. The same optional tuning '
+        'arguments apply: Freeze dB (default -60dB), Silence Noise (default -30dB), Min '
+        'Duration (default 1.5 seconds), and Force Encode (default No).')
 
     def __init__(self):
         super().__init__()
@@ -264,22 +309,37 @@ class DeFreezeForFilesPlugin(ActionMediaFilesPlugin):
         return 'kitchen'
 
     def get_action_args(self):
-        """
-        Get the arguments for the action.
-        """
         result = super().get_action_args()
-
+        result.append(plugin_string_arg('Freeze dB', 'freeze_db', 'Video freeze detection noise floor (default: -60dB)'))
+        result.append(plugin_string_arg('Silence Noise', 'silence_noise', 'Audio silence detection threshold (default: -30dB)'))
+        result.append(plugin_string_arg('Min Duration', 'min_duration', 'Minimum overlap seconds to cut (default: 1.5)'))
+        result.append(plugin_select_arg('Force Encode', 'force_encode', 'f',
+                                        plugin_select_values('No', 'f', 'Yes', 't'),
+                                        'Re-encode even if no gaps are found'))
         return result
 
     def process_action_args(self, args):
-        """
-        Process the action arguments.
-        """
         results = []
+
+        if 'freeze_db' not in args or is_blank(args['freeze_db']):
+            args['freeze_db'] = '-60dB'
+
+        if 'silence_noise' not in args or is_blank(args['silence_noise']):
+            args['silence_noise'] = '-30dB'
+
+        if 'min_duration' not in args or is_blank(args['min_duration']):
+            args['min_duration'] = '1.5'
+        else:
+            try:
+                float(args['min_duration'])
+            except ValueError:
+                results.append('min_duration must be a number')
+
+        if 'force_encode' not in args or is_blank(args['force_encode']):
+            args['force_encode'] = 'f'
 
         if len(results) > 0:
             return results
-
         return None
 
     def get_feature_flags(self):
@@ -294,7 +354,9 @@ class DeFreezeForFilesPlugin(ActionMediaFilesPlugin):
         """
         file_id = args['file_id']
         return DeFreezeJob("DeFreeze", f'DeFreeze for Files: {file_id}', '', file_id, self.primary_path,
-                           self.archive_path, self.temp_path, True)
+                           self.archive_path, self.temp_path, True,
+                           freeze_db=args['freeze_db'], silence_noise=args['silence_noise'],
+                           min_duration=float(args['min_duration']), force_encode=args['force_encode'] == 't')
 
 
 class DeFreezeJob(TaskWrapper):
@@ -303,7 +365,8 @@ class DeFreezeJob(TaskWrapper):
     """
 
     def __init__(self, name, description, folder_id, file_id, primary_path, archived_path, temp_folder,
-                 multiple_file: bool = False):
+                 multiple_file: bool = False, freeze_db: str = '-60dB', silence_noise: str = '-30dB',
+                 min_duration: float = 1.5, force_encode: bool = False):
         super().__init__(name, description)
         self.folder_id = folder_id
         self.file_id = file_id
@@ -311,7 +374,11 @@ class DeFreezeJob(TaskWrapper):
         self.primary_path = primary_path
         self.archived_path = archived_path
         self.temp_folder = temp_folder
-        self.weight = 70
+        self.freeze_db = freeze_db
+        self.silence_noise = silence_noise
+        self.min_duration = min_duration
+        self.force_encode = force_encode
+        self.weight = 20
         if folder_id != '*':
             self.ref_folder_id = folder_id
 
@@ -380,7 +447,11 @@ class DeFreezeJob(TaskWrapper):
 
                     self.info(f'Working on {file.filename}')
 
-                    cut_gaps(source_file, dest_file, desired_format, self)
+                    from media_encoder_util import remote_defreeze
+                    success = remote_defreeze(source_file, dest_file, self.freeze_db, self.silence_noise,
+                                              self.min_duration, self.force_encode, log=self)
+                    if not success:
+                        cut_gaps(source_file, dest_file, desired_format, self)
 
                     src_path = Path(temp_folder) / 'temp.mp4'
 

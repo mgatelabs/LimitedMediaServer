@@ -1,3 +1,4 @@
+from datetime import date as date_type
 import argparse
 import mimetypes
 import os.path
@@ -23,6 +24,23 @@ class DownloadMusicFromYtTask(ActionMediaFolderPlugin):
     """
     Download from YTube
     """
+    AI_QUICK_DESCRIPTION = ('Downloads audio from a YouTube link with yt-dlp, extracts it to MP3 '
+                            'with embedded cover art, and optionally splits it into per-chapter files.')
+    AI_LONG_DESCRIPTION = (
+        'Uses the yt-dlp command-line tool to grab the audio from a YouTube video, playlist, or '
+        'page and rip it to MP3 (yt-dlp "-x" "--audio-format mp3" "--embed-thumbnail"). If '
+        'Output is set to Split, "--split-chapters" is added so each chapter of the video becomes '
+        'its own file; the produced files are then grouped by source video, common filename '
+        'prefixes/suffixes are stripped to give clean chapter names, and the leading '
+        'cover-only placeholder file for each video is dropped. The video\'s cover art is '
+        'extracted from the audio, resized into an album (720px) and icon (256px) image, and '
+        'embedded into each MP3 as ID3 album art. Every resulting file is registered in the '
+        'database (guessed MIME type) and moved into the chosen disk (Primary, default, or '
+        'Archive); files with an unknown MIME type are skipped with a warning. Requires the '
+        'yt-dlp executable plus ffmpeg for the audio conversion. The only required argument is '
+        'URL. Output (Single File or Split) is optional and defaults to Single File, and '
+        'Destination is optional with a default of Primary Disk. Note: "Split" only produces '
+        'separate files when the source video actually has chapter markers.')
 
     def __init__(self):
         super().__init__()
@@ -257,6 +275,10 @@ class DownloadYtMusic(TaskWrapper):
 
                             else:
                                 self.warn(f'Ignoring file {item}, unknown MIME TYPE')
+
+                source_row.last_date = date_type.today()
+                db_session.commit()
+
             else:
                 self.error(f'Return Code {return_code}')
                 self.set_failure()

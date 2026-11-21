@@ -6,7 +6,8 @@ from app_properties import AppPropertyDefinition
 from constants import PROPERTY_SERVER_MEDIA_PRIMARY_FOLDER, PROPERTY_SERVER_MEDIA_ARCHIVE_FOLDER, \
     PROPERTY_SERVER_MEDIA_TEMP_FOLDER, PROPERTY_SERVER_SECRET_KEY, PROPERTY_SERVER_HOST_KEY, \
     PROPERTY_SERVER_AUTH_TIMEOUT_KEY, PROPERTY_SERVER_PORT_KEY, PROPERTY_SERVER_VOLUME_FOLDER, \
-    PROPERTY_SERVER_VOLUME_FORMAT, PROPERTY_SERVER_MEDIA_ENCODER_HOST
+    PROPERTY_SERVER_MEDIA_ENCODER_HOST, PROPERTY_SERVER_MEDIA_ENCODER_PORT, \
+    PROPERTY_LIMITED_SCRAPER_HOST, PROPERTY_LIMITED_SCRAPER_PORT
 from db import AppProperties, User, UserLimit, db, UserHardSession
 from text_utils import is_not_blank
 
@@ -125,16 +126,39 @@ def get_media_encoder_host() -> str:
         return value
     return ""
 
-def get_media_encoder_port(override_value: int = 8080) -> int:
+def get_media_encoder_port() -> int:
     """
-    Get the server port number from the database.
+    Get the host port for the external encoder
     """
     try:
-        # See if a valid override was passed in
-        if 0 < override_value < 65535:
-            return override_value
+        value = _get_attr_value(PROPERTY_SERVER_MEDIA_ENCODER_PORT)
+        if is_not_blank(value):
+            v = int(value)
+            if 0 < v < 65535:
+                return v
+    except ValueError:
+        pass
+    # Fallback to default
 
-        value = _get_attr_value(PROPERTY_SERVER_PORT_KEY)
+    return 8080
+
+
+def get_limited_scraper_host() -> str:
+    """
+    Get the host for the limited media scraper
+    """
+    value = _get_attr_value(PROPERTY_LIMITED_SCRAPER_HOST)
+    if is_not_blank(value):
+        return value
+    return ""
+
+
+def get_limited_scraper_port() -> int:
+    """
+    Get the port for the limited media scraper
+    """
+    try:
+        value = _get_attr_value(PROPERTY_LIMITED_SCRAPER_PORT)
         if is_not_blank(value):
             v = int(value)
             if 0 < v < 65535:
@@ -158,12 +182,9 @@ def get_volume_folder() -> str:
 
 def get_volume_format() -> str:
     """
-    Get the path for the temp show folder
+    Get the volume image format.
     """
-    value = _get_attr_value(PROPERTY_SERVER_VOLUME_FORMAT)
-    if is_not_blank(value):
-        return value
-    return "PNG"
+    return "WEBP"
 
 
 def get_plugin_value(property_id: str) -> str:

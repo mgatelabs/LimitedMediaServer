@@ -18,6 +18,15 @@ class CheckAllTagsTask(ActionBookGeneralPlugin):
     """
     This is used to download new book content from the Internet (All Books).
     """
+    AI_QUICK_DESCRIPTION = ('Fetches genre tags for all active books that have no tags yet from '
+                            'their source sites and stores them on the books.')
+    AI_LONG_DESCRIPTION = (
+        'Runs over all active books and, for any book whose tag field is still blank, asks the '
+        'book\'s processor (source site) for its genre tags, then stores the returned tags on '
+        'the book record and syncs the tag tables. Books that already have tags are skipped. '
+        'Filter is a required select (default All) limiting the run to one processor when not '
+        'All. No chapters or images are downloaded or changed. This action only runs on a Linux '
+        'server.')
 
     def __init__(self):
         super().__init__()
@@ -100,6 +109,15 @@ class UpdateSingleTagsTask(ActionBookSpecificPlugin):
     """
     This is used to download new book content from the Internet (Single Book).
     """
+    AI_QUICK_DESCRIPTION = ('Fetches the genre tags for one active book from its source site and '
+                            'stores them on the book record.')
+    AI_LONG_DESCRIPTION = (
+        'Runs a single-book tag fetch: asks the book\'s processor (source site) for its genre '
+        'tags and, when the site returns a result, stores the tags on the book record and syncs '
+        'the tag tables. Only runs on books that are currently active; an inactive or unknown '
+        'book produces no task. Unlike the all-books variant, a book that already has tags is '
+        'still re-checked. No chapters or images are downloaded or changed. Book ID is required. '
+        'This action only runs on a Linux server.')
 
     def __init__(self):
         super().__init__()
@@ -177,7 +195,7 @@ class CheckBookTagsTask(TaskWrapper):
         book = find_book_by_id(self.book_id, db_session)
 
         if book is not None:
-            bd = VolumeProcessor(self.processors, '', 'PNG', self)
+            bd = VolumeProcessor(self.processors, '', 'WEBP', self)
             status = bd.get_tags(book, self.token)
             if status is not None and status:
                 self.info('Book tags updates')

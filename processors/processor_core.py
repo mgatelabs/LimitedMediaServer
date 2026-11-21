@@ -1,7 +1,5 @@
 import copy
-import threading
 from abc import ABC, abstractmethod
-from typing import ClassVar, Dict, Type
 from typing import Optional
 
 from db import Book
@@ -72,7 +70,7 @@ class CustomDownloadInterface(ABC):
         :param definition: The book to process (JSON)
         :param chapter: This will be an item from list_chapters so {'chapter': "chapter_name", 'href': "chapter_url"}
         :param path: The folder path for this chapter
-        :param storage_format: PNG or WEBP
+        :param storage_format: WEBP
         :return: Nothing
         """
         convert_images_to_format(path, storage_format, self.task_wrapper)
@@ -141,6 +139,13 @@ class CustomDownloadInterface(ABC):
                 """
         return False
 
+    def allow_http2(self):
+        """
+                Does this processor support HTTP2 connections?
+                :return:
+        """
+        return True
+
     def check_and_retry(self):
         return False
 
@@ -151,6 +156,28 @@ class CustomDownloadInterface(ABC):
         :return: The description as a string
         """
         return ''
+
+    def is_remote_process(self) -> bool:
+        """
+        Does this processor use a remote server to handle requests?
+        :return: True if remote, False if processed locally
+        """
+        return False
+
+    def get_remote_scrape_key_names(self) -> list[str]:
+        """
+        For remote severs, what keys are available for the scraper?
+        :return:
+        """
+        return []
+
+    def is_valid_url(self, url: str) -> bool:
+        """
+        Validate if the given URL is valid for this processor.
+        :param url: The URL to validate
+        :return: True if valid, False otherwise
+        """
+        return False
 
     def clone_to(self, task_wrapper: TaskWrapper) -> "CustomDownloadInterface":
         """

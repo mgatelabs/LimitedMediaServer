@@ -22,6 +22,16 @@ class ConsumeForFolderPlugin(ActionMediaFolderPlugin):
     """
     Import files from a folder into the media server.
     """
+    AI_QUICK_DESCRIPTION = ('Moves every file in a local folder into a media folder, registering '
+                            'each as a new media file on the primary or archive disk.')
+    AI_LONG_DESCRIPTION = (
+        'Imports files from a local source folder into the chosen media folder. Each file in '
+        'the source folder is registered in the database (guessing its MIME type) and then '
+        'moved - not copied - from the local path into the media server storage on the chosen '
+        'disk (Primary or Archive). Files whose MIME type cannot be determined are skipped '
+        'with a log entry. Requires a valid local Folder path and a Location (primary or '
+        'archive). Because files are moved, the source folder will be emptied of the imported '
+        'files.')
 
     def __init__(self):
         super().__init__()

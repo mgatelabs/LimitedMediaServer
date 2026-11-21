@@ -6,7 +6,7 @@ from html_utils import download_secure_text, remove_trailing_slash, guess_file_e
 from number_utils import pad_integer_number, pad_decimal_string
 from processors.processor_core import CustomDownloadInterface
 from soup_utils import get_first_valid_attribute
-from text_utils import extract_webp_strings, extract_jpeg_strings
+from text_utils import extract_webp_strings, extract_jpeg_strings, extract_jpg_strings
 from thread_utils import TaskWrapper
 
 """
@@ -110,14 +110,21 @@ class GenericBasicProcessor(CustomDownloadInterface):
             found_images = extract_webp_strings(response)
 
             if self.task_wrapper.can_trace():
-                self.task_wrapper.trace(f'Found {len(found_images)}')
+                self.task_wrapper.trace(f'Found {len(found_images)} Webp')
 
             if len(found_images) <= 2:
                 if self.task_wrapper.can_trace():
                     self.task_wrapper.trace('Searching for jpeg')
                 ending = '.jpeg'
                 found_images = extract_jpeg_strings(response)
-                self.task_wrapper.trace(f'Found {len(found_images)}')
+                self.task_wrapper.trace(f'Found {len(found_images)} JPEG')
+
+            if len(found_images) <= 2:
+                if self.task_wrapper.can_trace():
+                    self.task_wrapper.trace('Searching for jpg')
+                ending = '.jpg'
+                found_images = extract_jpg_strings(response)
+                self.task_wrapper.trace(f'Found {len(found_images)} JPG')
 
             image_index = 1
             for img in found_images:
